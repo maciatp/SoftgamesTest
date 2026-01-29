@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using TripeaksSolitaire.Core;
 using System.Linq;
@@ -21,6 +21,7 @@ namespace TripeaksSolitaire.Gameplay
         public Dictionary<string, Card> cardDictionary = new Dictionary<string, Card>();
 
         private LevelData _currentLevel;
+        private TripeaksGameLogic _gameLogic = new TripeaksGameLogic();
 
         public void LoadLevel(LevelData levelData)
         {
@@ -109,38 +110,24 @@ namespace TripeaksSolitaire.Gameplay
 
         public bool IsCovered(Card card)
         {
-            // A card is covered if any other card with HIGHER depth overlaps it spatially
-            foreach (var otherCard in allCards)
-            {
-                if (!otherCard.isOnBoard) continue;
-                if (otherCard == card) continue;
-
-                // Only cards with HIGHER depth can cover this card
-                if (otherCard.depth <= card.depth) continue;
-
-                // Check spatial overlap using card dimensions
-                // Cards that overlap in Tripeaks usually have:
-                // - Very small X difference (same column) OR
-                // - Small Y difference (same row)
-                // Increased threshold to 150 to catch vertical stacks better
-                float xDiff = Mathf.Abs(card.boardPosition.x - otherCard.boardPosition.x);
-                float yDiff = Mathf.Abs(card.boardPosition.y - otherCard.boardPosition.y);
-
-                // A card is considered covering if it's within overlap distance
-                // Vertical stacks: X diff ~0, Y diff ~144
-                // Diagonal overlaps: X diff ~96, Y diff ~64-96
-                if (xDiff < 150f && yDiff < 150f)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return _gameLogic.IsCovered(
+                card,
+                allCards,
+                c => c.isOnBoard,
+                c => c.depth,
+                c => c.boardPosition
+            );
         }
 
         public List<Card> GetPlayableCards()
         {
-            return allCards.Where(c => c.isOnBoard && c.isPlayable).ToList();
+            return _gameLogic.GetPlayableCards(
+                allCards,
+                c => c.isOnBoard,
+                c => c.isFaceUp,
+                c => c.depth,
+                c => c.boardPosition
+            );
         }
 
         public void RemoveCardFromBoard(Card card)
@@ -155,21 +142,17 @@ namespace TripeaksSolitaire.Gameplay
             // Finally, reveal any cards that are now uncovered
             RevealUncoveredCards();
         }
+
         private void RevealUncoveredCards()
         {
-            // Check all face-down cards and reveal them if they're no longer covered
-            foreach (var card in allCards)
-            {
-                if (!card.isOnBoard) continue;
-                if (card.isFaceUp) continue; // Skip already face-up cards
-
-                // If card is not covered, reveal it
-                if (!IsCovered(card))
-                {
-                    card.isFaceUp = true;
-                    card.UpdateVisual();
-                }
-            }
+            _gameLogic.RevealUncoveredCards(
+                allCards,
+                c => c.isOnBoard,
+                c => c.isFaceUp,
+                c => { c.isFaceUp = true; c.UpdateVisual(); },
+                c => c.depth,
+                c => c.boardPosition
+            );
         }
     }
 }

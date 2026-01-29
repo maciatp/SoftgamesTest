@@ -89,7 +89,7 @@ namespace TripeaksSolitaire.Simulation
             };
         }
         
-        public int FindOptimalDeckSize(List<TuningResult> results, float targetCloseWinRate = 0.7f)
+        public int FindOptimalDeckSize(List<TuningResult> results, float targetCloseWinRate)
         {
             Debug.Log($"\n=== FINDING OPTIMAL DECK SIZE ===");
             Debug.Log($"Requirement 1: Close Win Rate ≥ {targetCloseWinRate:P0}");

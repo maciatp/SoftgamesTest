@@ -22,6 +22,7 @@ public class GameManager : MonoBehaviour
 
     private LevelData _currentLevel;
     private List<Card> _allBombs = new List<Card>();
+    private TripeaksGameLogic _gameLogic = new TripeaksGameLogic();
 
     void Start()
     {
@@ -446,18 +447,12 @@ public class GameManager : MonoBehaviour
 
     private void UnlockAllLocks()
     {
-        List<Card> locksToRemove = new List<Card>();
+        var locksToRemove = _gameLogic.GetLockCards(
+            board.allCards,
+            c => c.isOnBoard,
+            c => c.cardType == Card.CardType.Lock
+        );
         
-        // Find all lock cards
-        foreach (var card in board.allCards)
-        {
-            if (card.cardType == Card.CardType.Lock && card.isOnBoard)
-            {
-                locksToRemove.Add(card);
-            }
-        }
-        
-        // Remove all lock cards from the board
         foreach (var lockCard in locksToRemove)
         {
             board.RemoveCardFromBoard(lockCard);
@@ -469,32 +464,20 @@ public class GameManager : MonoBehaviour
 
     private void ClearHorizontalRow(Card zapCard)
     {
-        // Find all cards in the same horizontal row (similar Y position)
-        float yThreshold = 30f;
-        int clearedCount = 0;
-
-        List<Card> cardsToRemove = new List<Card>();
-
-        foreach (var card in board.allCards)
-        {
-            if (!card.isOnBoard) continue;
-            if (card == zapCard) continue;
-
-            float yDiff = Mathf.Abs(card.boardPosition.y - zapCard.boardPosition.y);
-            if (yDiff < yThreshold)
-            {
-                cardsToRemove.Add(card);
-            }
-        }
+        var cardsToRemove = _gameLogic.GetCardsInRow(
+            zapCard,
+            board.allCards,
+            c => c.isOnBoard,
+            c => c.boardPosition
+        );
 
         foreach (var card in cardsToRemove)
         {
             board.RemoveCardFromBoard(card);
             card.gameObject.SetActive(false);
-            clearedCount++;
         }
 
-        Debug.Log($"⚡ Zap cleared {clearedCount} cards from row!");
+        Debug.Log($"⚡ Zap cleared {cardsToRemove.Count} cards from row!");
     }
 
     private void CheckWinCondition()
@@ -515,14 +498,15 @@ public class GameManager : MonoBehaviour
 
     private bool HasPlayableCards()
     {
-        foreach (var card in board.GetPlayableCards())
-        {
-            if (playPile.CanAcceptCard(card))
-            {
-                return true;
-            }
-        }
-        return false;
+        var playableCards = board.GetPlayableCards();
+        return _gameLogic.HasValidMoves(
+            playableCards,
+            playPile.currentValue,
+            c => c.value,
+            c => c.cardType == Card.CardType.Key,
+            c => c.cardType == Card.CardType.Zap,
+            c => c.hasLock
+        );
     }
 
     private void GameOver(bool win, string reason)

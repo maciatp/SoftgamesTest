@@ -15,7 +15,7 @@ namespace TripeaksSolitaire.Simulation
         private int _moveCount;
         private bool _gameOver;
         private bool _isWin;
-        private System.Random _deckRng; // RNG for on-demand card generation
+        private TripeaksGameLogic _gameLogic = new TripeaksGameLogic();
 
         // Simplified card for simulation (no MonoBehaviour)
         public class SimCard
@@ -100,21 +100,13 @@ namespace TripeaksSolitaire.Simulation
                 _boardCards.Add(new SimCard(cardData));
             }
 
-            // Initialize RNG for on-demand card generation
-            System.Random rng = new System.Random(System.Guid.NewGuid().GetHashCode());
-            
-            // Store deck size only (cards generated on demand)
-            _drawPile = new List<int>();
-            for (int i = 0; i < deckSize; i++)
-            {
-                _drawPile.Add(-1); // Placeholder - will be generated when drawn
-            }
-            _deckRng = rng;
+            // Initialize draw pile with BALANCED deck
+            _drawPile = GenerateBalancedDeck(deckSize);
 
-            // Draw initial card (generate on demand)
+            // Draw initial card
             if (_drawPile.Count > 0)
             {
-                _currentPlayCard = _deckRng.Next(1, 14);
+                _currentPlayCard = _drawPile[_drawPileIndex];
                 _drawPileIndex++;
             }
 
@@ -133,11 +125,66 @@ namespace TripeaksSolitaire.Simulation
             return new SimulationResult
             {
                 isWin = _isWin,
-                isCloseWin = _isWin && cardsLeft <= 2, // 0, 1, or 2 cards remaining
+                isCloseWin = _isWin && cardsLeft <= 2,
                 cardsRemainingInDraw = cardsLeft,
                 moveCount = _moveCount,
                 lossReason = _isWin ? "" : "No valid moves or bomb exploded"
             };
+        }
+
+        private List<int> GenerateBalancedDeck(int deckSize)
+        {
+            List<int> balancedDeck = new List<int>();
+            System.Random rng = new System.Random(System.Guid.NewGuid().GetHashCode());
+
+            // Calculate complete sets
+            int completeSets = deckSize / 13;
+            int remainingCards = deckSize % 13;
+
+            // Add complete sets (1-13)
+            for (int set = 0; set < completeSets; set++)
+            {
+                for (int value = 1; value <= 13; value++)
+                {
+                    balancedDeck.Add(value);
+                }
+            }
+
+            // Add remaining cards
+            if (remainingCards > 0)
+            {
+                List<int> availableValues = new List<int>();
+                for (int i = 1; i <= 13; i++)
+                {
+                    availableValues.Add(i);
+                }
+
+                // Shuffle available values
+                for (int i = availableValues.Count - 1; i > 0; i--)
+                {
+                    int j = rng.Next(0, i + 1);
+                    int temp = availableValues[i];
+                    availableValues[i] = availableValues[j];
+                    availableValues[j] = temp;
+                }
+
+                // Take first N values
+                for (int i = 0; i < remainingCards; i++)
+                {
+                    balancedDeck.Add(availableValues[i]);
+                }
+            }
+
+            // Shuffle the balanced deck
+            for (int i = balancedDeck.Count - 1; i > 0; i--)
+            {
+                int j = rng.Next(0, i + 1);
+                int temp = balancedDeck[i];
+                balancedDeck[i] = balancedDeck[j];
+                balancedDeck[j] = temp;
+            }
+
+            return balancedDeck;
         }
 
         private void PlayTurn()
@@ -157,8 +204,7 @@ namespace TripeaksSolitaire.Simulation
                 // No valid cards - must draw from pile
                 if (_drawPileIndex < _drawPile.Count)
                 {
-                    // Generate card on demand
-                    _currentPlayCard = _deckRng.Next(1, 14);
+                    _currentPlayCard = _drawPile[_drawPileIndex];
                     _drawPileIndex++;
                     IncrementMove();
                 }
@@ -249,65 +295,24 @@ namespace TripeaksSolitaire.Simulation
 
         private int CountCardsThisWouldUncover(SimCard card)
         {
-            int count = 0;
-
-            foreach (var otherCard in _boardCards)
-            {
-                if (!otherCard.isOnBoard) continue;
-                if (otherCard == card) continue;
-
-                // Check if this card is the ONLY card covering the other
-                if (IsCoveredByOnly(otherCard, card))
-                {
-                    count++;
-                }
-            }
-
-            return count;
-        }
-
-        private bool IsCoveredByOnly(SimCard card, SimCard coveringCard)
-        {
-            // Check if card is covered ONLY by coveringCard
-            int coverCount = 0;
-
-            foreach (var other in _boardCards)
-            {
-                if (!other.isOnBoard) continue;
-                if (other == card) continue;
-                if (other.depth <= card.depth) continue;
-
-                float xDiff = Mathf.Abs(card.position.x - other.position.x);
-                float yDiff = Mathf.Abs(card.position.y - other.position.y);
-
-                // Updated to match Board.cs threshold
-                if (xDiff < 150f && yDiff < 150f)
-                {
-                    coverCount++;
-                }
-            }
-
-            return coverCount == 1;
+            return _gameLogic.CountCardsUncovered(
+                card,
+                _boardCards,
+                c => c.isOnBoard,
+                c => c.depth,
+                c => c.position
+            );
         }
 
         private int CountCardsInRow(SimCard zapCard)
         {
-            float yThreshold = 30f;
-            int count = 0;
-
-            foreach (var card in _boardCards)
-            {
-                if (!card.isOnBoard) continue;
-                if (card == zapCard) continue;
-
-                float yDiff = Mathf.Abs(card.position.y - zapCard.position.y);
-                if (yDiff < yThreshold)
-                {
-                    count++;
-                }
-            }
-
-            return count;
+            var cardsInRow = _gameLogic.GetCardsInRow(
+                zapCard,
+                _boardCards,
+                c => c.isOnBoard,
+                c => c.position
+            );
+            return cardsInRow.Count;
         }
 
         private bool CanPlayCard(SimCard card)
