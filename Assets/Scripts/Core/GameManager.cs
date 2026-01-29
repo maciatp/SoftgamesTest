@@ -29,9 +29,7 @@ public class GameManager : MonoBehaviour
     }
 
     public void LoadAndStartLevel()
-    {
-        Debug.Log($"=== LOADING LEVEL ===");
-        
+    {                
         if (levelJsonFile == null)
         {
             Debug.LogError("❌ No level JSON file assigned! Please drag a JSON file to the 'Level Json File' field in the Inspector.");
@@ -190,16 +188,6 @@ public class GameManager : MonoBehaviour
         {
             Debug.Log($"✅ Win criteria: {settings.win_criteria[0].type}");
         }
-
-        // Validate star thresholds
-        if (settings.star_1 <= 0 || settings.star_2 <= 0 || settings.star_3 <= 0)
-        {
-            Debug.LogWarning($"⚠️ WARNING: Star thresholds seem invalid: {settings.star_1}, {settings.star_2}, {settings.star_3}");
-        }
-        else
-        {
-            Debug.Log($"✅ Star thresholds: {settings.star_1} / {settings.star_2} / {settings.star_3}");
-        }
     }
 
     private void ValidateCards(List<CardData> cards, ref bool hasErrors)
@@ -312,11 +300,6 @@ public class GameManager : MonoBehaviour
 
         // Check for depth consistency
         var depthGroups = cards.GroupBy(c => c.depth).OrderBy(g => g.Key);
-        Debug.Log($"Depth distribution:");
-        foreach (var group in depthGroups)
-        {
-            Debug.Log($"  Depth {group.Key}: {group.Count()} cards");
-        }
     }
 
     private void StartLevel(LevelData levelData)
@@ -358,13 +341,13 @@ public class GameManager : MonoBehaviour
 
         if (!card.isPlayable)
         {
-            Debug.Log($"Card {card.cardId} is not playable (covered or locked)");
+            Debug.Log($"Card {card.cardId} is not playable (covered)");
             return;
         }
 
-        if (card.cardType == Card.CardType.Lock && card.hasLock)
+        if (card.cardType == Card.CardType.Lock)
         {
-            Debug.Log($"Card {card.cardId} is locked!");
+            Debug.Log($"Card {card.cardId} is a lock! Use a Key to remove it.");
             return;
         }
 
@@ -444,12 +427,11 @@ public class GameManager : MonoBehaviour
     private void IncrementMove()
     {
         moveCount++;
-        Debug.Log($"Move #{moveCount}");
-
+        
         // Decrement all bomb timers
         foreach (var bomb in _allBombs)
         {
-            if (bomb.isOnBoard)
+            if (bomb.isOnBoard && bomb.isFaceUp)
             {
                 bomb.DecrementBombTimer();
 
@@ -464,18 +446,25 @@ public class GameManager : MonoBehaviour
 
     private void UnlockAllLocks()
     {
-        int unlockedCount = 0;
+        List<Card> locksToRemove = new List<Card>();
+        
+        // Find all lock cards
         foreach (var card in board.allCards)
         {
-            if (card.hasLock && card.isOnBoard)
+            if (card.cardType == Card.CardType.Lock && card.isOnBoard)
             {
-                card.hasLock = false;
-                card.UpdateVisual();
-                unlockedCount++;
+                locksToRemove.Add(card);
             }
         }
-        Debug.Log($"🔓 Unlocked {unlockedCount} locks!");
-        board.UpdateAllCardsPlayability();
+        
+        // Remove all lock cards from the board
+        foreach (var lockCard in locksToRemove)
+        {
+            board.RemoveCardFromBoard(lockCard);
+            lockCard.gameObject.SetActive(false);
+        }
+        
+        Debug.Log($"🔑 Key used! Removed {locksToRemove.Count} lock cards from board!");
     }
 
     private void ClearHorizontalRow(Card zapCard)

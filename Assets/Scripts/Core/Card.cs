@@ -74,7 +74,7 @@ public class Card : MonoBehaviour
         }
 
         // Set value (random or fixed)
-        if (cardType == CardType.Value || cardType == CardType.Lock)
+        if (cardType == CardType.Value)
         {
             if (data.random)
             {
@@ -155,15 +155,7 @@ public class Card : MonoBehaviour
             }
             else if (cardType == CardType.Lock)
             {
-                // Show value if unlocked, otherwise show LOCK
-                if (hasLock)
-                {
-                    valueText.text = "LOCK";
-                }
-                else
-                {
-                    valueText.text = GetCardValueString();
-                }
+                valueText.text = "LOCK";
                 valueText.gameObject.SetActive(true);
             }
             else if (cardType == CardType.Key)
@@ -183,7 +175,7 @@ public class Card : MonoBehaviour
         }
 
         // Update bomb timer - ONLY IF BOMB EXISTS
-        if (hasBomb && bombModifier != null)
+        if (hasBomb && bombModifier != null && isFaceUp)
         {
             if (bombTimerText != null)
             {

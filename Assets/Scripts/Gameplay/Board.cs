@@ -48,8 +48,6 @@ namespace TripeaksSolitaire.Gameplay
                 return;
             }
 
-            Debug.Log($"Generating board with {_currentLevel.cards.Count} cards");
-
             foreach (var cardData in _currentLevel.cards)
             {
                 CreateCard(cardData);
@@ -57,8 +55,6 @@ namespace TripeaksSolitaire.Gameplay
 
             // Update playability after all cards are created
             UpdateAllCardsPlayability();
-
-            Debug.Log($"Board generated successfully with {allCards.Count} cards");
         }
 
         private void CreateCard(CardData data)

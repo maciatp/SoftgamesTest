@@ -26,15 +26,19 @@ namespace TripeaksSolitaire.Gameplay
             currentValue = value;
             currentType = type;
             UpdateVisual();
-
-            Debug.Log($"Play pile now shows: {GetCardString(currentValue)}");
         }
 
         public void SetCardFromCard(Card card)
         {
-            currentValue = card.value;
-            currentType = card.cardType;
-            UpdateVisual();
+            // Only update the play pile value if it's a Value card
+            // Keys and Zaps don't change the current value
+            if (card.cardType == Card.CardType.Value)
+            {
+                currentValue = card.value;
+                currentType = card.cardType;
+                UpdateVisual();
+            }
+            // Keys and Zaps are played but don't update the pile
         }
 
         private void UpdateVisual()
@@ -58,14 +62,14 @@ namespace TripeaksSolitaire.Gameplay
                 return true;
             }
 
-            // Locked cards cannot be played
-            if (card.hasLock)
+            // Lock cards cannot be played (must be removed with Key)
+            if (card.cardType == Card.CardType.Lock)
             {
                 return false;
             }
 
-            // Check if card value is adjacent (works for both Value and unlocked Lock cards)
-            if ((card.cardType == Card.CardType.Value || card.cardType == Card.CardType.Lock) && currentType == Card.CardType.Value)
+            // Check if card value is adjacent
+            if (card.cardType == Card.CardType.Value && currentType == Card.CardType.Value)
             {
                 int diff = Mathf.Abs(card.value - currentValue);
                 return diff == 1 || diff == 12; // Adjacent or Ace-King wrap
