@@ -453,6 +453,11 @@ public class GameManager : MonoBehaviour
         if (drawPile.IsEmpty())
         {
             Debug.Log("Draw pile is empty!");
+            // Check if we have any playable moves
+            if (!HasPlayableCards())
+            {
+                GameOver(false, "No more cards in draw pile and no valid moves!");
+            }
             return;
         }
 
@@ -463,6 +468,16 @@ public class GameManager : MonoBehaviour
 
         // Increment move counter (drawing also counts as a move)
         IncrementMove();
+        
+        // Check if this was the last card and we still can't win
+        if (drawPile.IsEmpty() && !HasPlayableCards())
+        {
+            int cardsOnBoard = board.allCards.Count(c => c.isOnBoard);
+            if (cardsOnBoard > 0)
+            {
+                GameOver(false, "Drew last card but no valid moves remain!");
+            }
+        }
     }
 
     private void IncrementMove()
@@ -565,9 +580,37 @@ public class GameManager : MonoBehaviour
         gameOver = true;
         isWin = win;
 
-        string message = win ? $"🎉 YOU WIN! {reason}" : $"💀 GAME OVER: {reason}";
-        message += $"\nMoves: {moveCount}";
-        message += $"\nCards remaining in draw pile: {drawPile.RemainingCards()}";
+        int cardsOnBoard = board.allCards.Count(c => c.isOnBoard);
+        int cardsInDraw = drawPile.RemainingCards();
+
+        string message = new string("");
+        
+        if (win)
+        {
+            message += $"🎉 VICTORY! {reason}\n";
+            message += new string('=', 50) + "\n";
+            message += $"Final Stats:\n";
+            message += $"  • Total Moves: {moveCount}\n";
+            message += $"  • Cards Remaining in Draw Pile: {cardsInDraw}\n";
+            
+            if (cardsInDraw <= 2)
+            {
+                message += $"  • 🌟 CLOSE WIN ACHIEVED! ({cardsInDraw} cards left)\n";
+            }
+        }
+        else
+        {
+            message += $"💀 GAME OVER\n";
+            message += new string('=', 50) + "\n";
+            message += $"Defeat Reason: {reason}\n";
+            message += $"\n";
+            message += $"Final Stats:\n";
+            message += $"  • Total Moves: {moveCount}\n";
+            message += $"  • Cards Left on Board: {cardsOnBoard}\n";
+            message += $"  • Cards Remaining in Draw Pile: {cardsInDraw}\n";
+        }
+        
+        message += new string('=', 50);
 
         Debug.Log(message);
     }
