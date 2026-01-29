@@ -113,18 +113,27 @@ namespace TripeaksSolitaire.Gameplay
 
         public bool IsCovered(Card card)
         {
-            // A card is covered if any other card with higher depth overlaps it
+            // A card is covered if any other card with HIGHER depth overlaps it spatially
             foreach (var otherCard in allCards)
             {
                 if (!otherCard.isOnBoard) continue;
                 if (otherCard == card) continue;
+
+                // Only cards with HIGHER depth can cover this card
                 if (otherCard.depth <= card.depth) continue;
 
-                // Check if cards overlap (simple circle collision)
-                float distance = Vector2.Distance(card.boardPosition, otherCard.boardPosition);
-                float overlapThreshold = 50f; // Adjust based on your coordinate system
+                // Check spatial overlap using card dimensions
+                // Cards that overlap in Tripeaks usually have:
+                // - Very small X difference (same column) OR
+                // - Small Y difference (same row)
+                // Increased threshold to 150 to catch vertical stacks better
+                float xDiff = Mathf.Abs(card.boardPosition.x - otherCard.boardPosition.x);
+                float yDiff = Mathf.Abs(card.boardPosition.y - otherCard.boardPosition.y);
 
-                if (distance < overlapThreshold)
+                // A card is considered covering if it's within overlap distance
+                // Vertical stacks: X diff ~0, Y diff ~144
+                // Diagonal overlaps: X diff ~96, Y diff ~64-96
+                if (xDiff < 150f && yDiff < 150f)
                 {
                     return true;
                 }
@@ -140,10 +149,15 @@ namespace TripeaksSolitaire.Gameplay
 
         public void RemoveCardFromBoard(Card card)
         {
+            // IMPORTANT: Update playability BEFORE marking card as removed
+            // This ensures we check coverage with the card still present
             card.isOnBoard = false;
-            card.isPlayable = false;
+            
+            // Now update playability for remaining cards
             UpdateAllCardsPlayability();
-            RevealUncoveredCards(); 
+            
+            // Finally, reveal any cards that are now uncovered
+            RevealUncoveredCards();
         }
         private void RevealUncoveredCards()
         {
@@ -158,7 +172,6 @@ namespace TripeaksSolitaire.Gameplay
                 {
                     card.isFaceUp = true;
                     card.UpdateVisual();
-                    Debug.Log($"🔍 Revealed card {card.cardId}");
                 }
             }
         }

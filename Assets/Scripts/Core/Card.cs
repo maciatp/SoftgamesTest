@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections.Generic;
 using TripeaksSolitaire.Core;
 using TMPro;
@@ -105,6 +105,19 @@ public class Card : MonoBehaviour
             }
         }
 
+        // Force ensure valueText GameObject is active before calling UpdateVisual
+        if (valueText != null && valueText.gameObject != null)
+        {
+            valueText.gameObject.SetActive(true);
+        }
+
+        // Call UpdateVisual in next frame to ensure Unity hierarchy is ready
+        StartCoroutine(UpdateVisualNextFrame());
+    }
+    
+    private System.Collections.IEnumerator UpdateVisualNextFrame()
+    {
+        yield return null; // Wait one frame
         UpdateVisual();
     }
 
@@ -113,13 +126,27 @@ public class Card : MonoBehaviour
         // Update sprite color based on face up/down
         if (spriteRenderer != null)
         {
-            spriteRenderer.color = isFaceUp ? Color.white : new Color(0.5f, 0.5f, 0.8f);
+            if (isFaceUp)
+            {
+                spriteRenderer.color = Color.white;
+            }
+            else
+            {
+                // Face down - darker blue
+                spriteRenderer.color = new Color(0.3f, 0.3f, 0.6f);
+            }
         }
 
         // Update value text
         if (valueText != null)
         {
-            if (isFaceUp && cardType == CardType.Value)
+            if (!isFaceUp)
+            {
+                // Card is face down - show nothing
+                valueText.text = "";
+                valueText.gameObject.SetActive(false);
+            }
+            else if (cardType == CardType.Value)
             {
                 valueText.text = GetCardValueString();
                 valueText.gameObject.SetActive(true);
@@ -138,7 +165,7 @@ public class Card : MonoBehaviour
             {
                 valueText.text = "ZAP";
                 valueText.gameObject.SetActive(true);
-            }           
+            }
             else
             {
                 valueText.gameObject.SetActive(false);
@@ -146,7 +173,7 @@ public class Card : MonoBehaviour
         }
 
         // Update bomb timer - ONLY IF BOMB EXISTS
-        if (cardType == CardType.Bomb && hasBomb && bombModifier != null)
+        if (hasBomb && bombModifier != null)
         {
             if (bombTimerText != null)
             {
