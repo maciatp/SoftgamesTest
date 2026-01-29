@@ -1,9 +1,8 @@
-﻿using UnityEngine;
+using UnityEngine;
 using TripeaksSolitaire.Core;
 using TripeaksSolitaire.Gameplay;
 using System.Collections.Generic;
 using System.Linq;
-using System.IO;
 
 public class GameManager : MonoBehaviour
 {
@@ -13,9 +12,8 @@ public class GameManager : MonoBehaviour
     public PlayPile playPile;
 
     [Header("Level Selection")]
-    [Tooltip("Path to the JSON level file. Can be relative to Resources/Levels/ or absolute path")]
-    public string levelFilePath = "level_25.json";
-    public bool loadFromResources = true; // If false, will load from absolute path
+    [Tooltip("Drag and drop the JSON file from Resources/Levels/ here")]
+    public TextAsset levelJsonFile;
 
     [Header("Game State")]
     public int moveCount = 0;
@@ -33,58 +31,23 @@ public class GameManager : MonoBehaviour
     public void LoadAndStartLevel()
     {
         Debug.Log($"=== LOADING LEVEL ===");
-        Debug.Log($"File: {levelFilePath}");
-        Debug.Log($"Load from Resources: {loadFromResources}");
-
-        _currentLevel = loadFromResources ?
-            LoadLevelFromResources(levelFilePath) :
-            LoadLevelFromAbsolutePath(levelFilePath);
-
-        if (_currentLevel != null)
+        
+        if (levelJsonFile == null)
         {
-            ValidateAndStartLevel(_currentLevel);
+            Debug.LogError("❌ No level JSON file assigned! Please drag a JSON file to the 'Level Json File' field in the Inspector.");
+            return;
+        }
+        
+        Debug.Log($"Loading level: {levelJsonFile.name}");
+        LevelData levelData = ParseLevelJSON(levelJsonFile.text, levelJsonFile.name);
+
+        if (levelData != null)
+        {
+            ValidateAndStartLevel(levelData);
         }
         else
         {
-            Debug.LogError($"❌ Failed to load level from: {levelFilePath}");
-        }
-    }
-
-    private LevelData LoadLevelFromResources(string fileName)
-    {
-        // Remove .json extension if present
-        string resourcePath = fileName.Replace(".json", "");
-
-        // Try loading from Resources/Levels/
-        TextAsset jsonFile = Resources.Load<TextAsset>($"Levels/{resourcePath}");
-
-        if (jsonFile == null)
-        {
-            Debug.LogError($"❌ Level file not found in Resources/Levels/: {fileName}");
-            Debug.LogError($"Make sure the file is located at: Assets/Resources/Levels/{fileName}");
-            return null;
-        }
-
-        return ParseLevelJSON(jsonFile.text, fileName);
-    }
-
-    private LevelData LoadLevelFromAbsolutePath(string filePath)
-    {
-        if (!File.Exists(filePath))
-        {
-            Debug.LogError($"❌ Level file not found at path: {filePath}");
-            return null;
-        }
-
-        try
-        {
-            string jsonContent = File.ReadAllText(filePath);
-            return ParseLevelJSON(jsonContent, Path.GetFileName(filePath));
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"❌ Error reading file: {e.Message}");
-            return null;
+            Debug.LogError($"❌ Failed to load level from {levelJsonFile.name}");
         }
     }
 
@@ -107,8 +70,6 @@ public class GameManager : MonoBehaviour
         {
             Debug.LogError($"❌ JSON parsing error in {fileName}:");
             Debug.LogError($"   Message: {e.Message}");
-            //Debug.LogError($"   Line: {e.LineNumber}, Position: {e.LinePosition}");
-            //Debug.LogError($"   Path: {e.Path}");
             return null;
         }
         catch (System.Exception e)
@@ -155,7 +116,7 @@ public class GameManager : MonoBehaviour
             ValidateCards(levelData.cards, ref hasErrors);
         }
 
-        // Check for unknown properties (this is tricky with JSON, but we can check common mistakes)
+        // Check for unknown properties
         if (string.IsNullOrEmpty(levelData.id))
         {
             Debug.LogWarning("⚠️ WARNING: 'id' field is missing or empty");
@@ -520,7 +481,7 @@ public class GameManager : MonoBehaviour
     private void ClearHorizontalRow(Card zapCard)
     {
         // Find all cards in the same horizontal row (similar Y position)
-        float yThreshold = 30f; // Adjust based on your coordinate system
+        float yThreshold = 30f;
         int clearedCount = 0;
 
         List<Card> cardsToRemove = new List<Card>();
@@ -624,10 +585,10 @@ public class GameManager : MonoBehaviour
             LoadAndStartLevel();
         }
 
-        // Press L to reload level (useful after changing the file path in inspector)
+        // Press L to reload level (useful after changing JSON file)
         if (Input.GetKeyDown(KeyCode.L))
         {
-            Debug.Log("Reloading level from file...");
+            Debug.Log("Reloading level...");
             LoadAndStartLevel();
         }
     }
