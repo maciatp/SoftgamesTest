@@ -798,8 +798,7 @@ MonoBehaviour:
   board: {fileID: 1651992956}
   drawPile: {fileID: 2104758540}
   playPile: {fileID: 1601480738}
-  levelFilePath: level_25.json
-  loadFromResources: 1
+  levelJsonFile: {fileID: 4900000, guid: 1d9acc955fb7912479649d73704b64cc, type: 3}
   moveCount: 0
   gameOver: 0
   isWin: 0
