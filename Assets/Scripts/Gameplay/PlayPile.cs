@@ -58,8 +58,14 @@ namespace TripeaksSolitaire.Gameplay
                 return true;
             }
 
-            // Check if card value is adjacent
-            if (card.cardType == Card.CardType.Value && currentType == Card.CardType.Value)
+            // Locked cards cannot be played
+            if (card.hasLock)
+            {
+                return false;
+            }
+
+            // Check if card value is adjacent (works for both Value and unlocked Lock cards)
+            if ((card.cardType == Card.CardType.Value || card.cardType == Card.CardType.Lock) && currentType == Card.CardType.Value)
             {
                 int diff = Mathf.Abs(card.value - currentValue);
                 return diff == 1 || diff == 12; // Adjacent or Ace-King wrap
