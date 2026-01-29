@@ -179,7 +179,7 @@ public class Card : MonoBehaviour
         {
             if (bombTimerText != null)
             {
-                bombTimerText.text = "💣" + bombModifier.timer.ToString();
+                bombTimerText.text = bombModifier.timer.ToString();
                 bombTimerText.gameObject.SetActive(true);
             }
             if (bombIcon != null)
