@@ -74,11 +74,13 @@ public class Card : MonoBehaviour
         }
 
         // Set value (random or fixed)
-        if (cardType == CardType.Value)
+        if (cardType == CardType.Value || cardType == CardType.Lock)
         {
             if (data.random)
             {
-                value = Random.Range(1, 14); // 1-13
+                // Use System.Random with unique seed for better randomness
+                System.Random rng = new System.Random(System.DateTime.Now.Millisecond + GetInstanceID() + (int)(data.x * 1000 + data.y));
+                value = rng.Next(1, 14); // 1-13
             }
             else
             {
@@ -153,7 +155,15 @@ public class Card : MonoBehaviour
             }
             else if (cardType == CardType.Lock)
             {
-                valueText.text = "LOCK";
+                // Show value if unlocked, otherwise show LOCK
+                if (hasLock)
+                {
+                    valueText.text = "LOCK";
+                }
+                else
+                {
+                    valueText.text = GetCardValueString();
+                }
                 valueText.gameObject.SetActive(true);
             }
             else if (cardType == CardType.Key)
