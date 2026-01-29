@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEditor;
 using TripeaksSolitaire.Core;
 using TripeaksSolitaire.Simulation;
@@ -20,7 +20,7 @@ namespace TripeaksSolitaire.Editor
         private string _jsonFilePath = "";
         private int _minDeckSize = 10;
         private int _maxDeckSize = 50;
-        private int _simulationsPerSize = 100;
+        private int _simulationsPerSize = 500;
         private float _targetCloseWinRate = 0.7f;
 
         // Results
@@ -68,14 +68,15 @@ namespace TripeaksSolitaire.Editor
 
             _minDeckSize = EditorGUILayout.IntSlider("Min Deck Size", _minDeckSize, 5, 100);
             _maxDeckSize = EditorGUILayout.IntSlider("Max Deck Size", _maxDeckSize, _minDeckSize, 100);
-            _simulationsPerSize = EditorGUILayout.IntSlider("Simulations Per Size", _simulationsPerSize, 10, 1000);
+            _simulationsPerSize = EditorGUILayout.IntSlider("Simulations Per Size", _simulationsPerSize, 500, 5000);
             _targetCloseWinRate = EditorGUILayout.Slider("Target Close Win %", _targetCloseWinRate, 0.5f, 0.9f);
 
             EditorGUILayout.Space(5);
             EditorGUILayout.HelpBox(
                 $"Will test {_maxDeckSize - _minDeckSize + 1} deck sizes with {_simulationsPerSize} simulations each.\n" +
                 $"Total simulations: {(_maxDeckSize - _minDeckSize + 1) * _simulationsPerSize}\n" +
-                $"Estimated time: ~{EstimateTime()} seconds",
+                $"Target: {_targetCloseWinRate:P0} of wins must have ≤2 cards remaining\n" +
+                $"Goal: Find SMALLEST deck size that meets this target",
                 MessageType.Info);
 
             EditorGUILayout.Space(5);
@@ -117,13 +118,17 @@ namespace TripeaksSolitaire.Editor
                 var optimalResult = _results.Find(r => r.deckSize == _optimalDeckSize);
                 if (optimalResult != null)
                 {
+                    string statusIcon = optimalResult.meetsTarget ? "✅" : "⚠️";
+                    MessageType msgType = optimalResult.meetsTarget ? MessageType.None : MessageType.Warning;
+                    
                     EditorGUILayout.HelpBox(
-                        $"🎯 OPTIMAL DECK SIZE: {_optimalDeckSize} cards\n\n" +
-                        $"Win Rate: {optimalResult.winRate:P2}\n" +
-                        $"Close Win Rate: {optimalResult.closeWinRate:P2} (target: {_targetCloseWinRate:P2})\n" +
+                        $"{statusIcon} RECOMMENDED DECK SIZE: {_optimalDeckSize} cards\n\n" +
+                        $"Win Rate: {optimalResult.winRate:P2} ({optimalResult.wins}/{optimalResult.totalGames} games)\n" +
+                        $"Close Win Rate: {optimalResult.closeWinRate:P2} (target: ≥{_targetCloseWinRate:P0})\n" +
+                        $"Meets Target: {(optimalResult.meetsTarget ? "YES ✅" : "NO - Consider adjusting settings")}\n" +
                         $"Avg Moves on Win: {optimalResult.avgMovesOnWin:F1}\n" +
                         $"Avg Cards Remaining: {optimalResult.avgCardsRemainingOnWin:F2}",
-                        MessageType.None);
+                        msgType);
                 }
 
                 EditorGUILayout.Space(10);
@@ -135,11 +140,12 @@ namespace TripeaksSolitaire.Editor
 
                 // Table header
                 EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
-                EditorGUILayout.LabelField("Deck Size", EditorStyles.boldLabel, GUILayout.Width(80));
-                EditorGUILayout.LabelField("Win Rate", EditorStyles.boldLabel, GUILayout.Width(80));
-                EditorGUILayout.LabelField("Close Win %", EditorStyles.boldLabel, GUILayout.Width(100));
-                EditorGUILayout.LabelField("Avg Moves", EditorStyles.boldLabel, GUILayout.Width(80));
-                EditorGUILayout.LabelField("Avg Cards Left", EditorStyles.boldLabel, GUILayout.Width(100));
+                EditorGUILayout.LabelField("Deck", EditorStyles.boldLabel, GUILayout.Width(50));
+                EditorGUILayout.LabelField("Wins", EditorStyles.boldLabel, GUILayout.Width(60));
+                EditorGUILayout.LabelField("Win %", EditorStyles.boldLabel, GUILayout.Width(60));
+                EditorGUILayout.LabelField("Close Win %", EditorStyles.boldLabel, GUILayout.Width(90));
+                EditorGUILayout.LabelField("Meets Target", EditorStyles.boldLabel, GUILayout.Width(90));
+                EditorGUILayout.LabelField("Avg Cards", EditorStyles.boldLabel, GUILayout.Width(80));
                 EditorGUILayout.EndHorizontal();
 
                 // Table rows
@@ -151,21 +157,23 @@ namespace TripeaksSolitaire.Editor
                     {
                         GUI.backgroundColor = Color.green;
                     }
+                    else if (result.meetsTarget)
+                    {
+                        GUI.backgroundColor = new Color(0.8f, 1f, 0.8f);
+                    }
 
                     EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
 
-                    EditorGUILayout.LabelField(result.deckSize.ToString(), GUILayout.Width(80));
-                    EditorGUILayout.LabelField($"{result.winRate:P1}", GUILayout.Width(80));
-                    EditorGUILayout.LabelField($"{result.closeWinRate:P1}", GUILayout.Width(100));
-                    EditorGUILayout.LabelField($"{result.avgMovesOnWin:F1}", GUILayout.Width(80));
-                    EditorGUILayout.LabelField($"{result.avgCardsRemainingOnWin:F2}", GUILayout.Width(100));
+                    EditorGUILayout.LabelField(result.deckSize.ToString(), GUILayout.Width(50));
+                    EditorGUILayout.LabelField($"{result.wins}/{result.totalGames}", GUILayout.Width(60));
+                    EditorGUILayout.LabelField($"{result.winRate:P1}", GUILayout.Width(60));
+                    EditorGUILayout.LabelField($"{result.closeWinRate:P1}", GUILayout.Width(90));
+                    EditorGUILayout.LabelField(result.meetsTarget ? "✅" : "❌", GUILayout.Width(90));
+                    EditorGUILayout.LabelField($"{result.avgCardsRemainingOnWin:F2}", GUILayout.Width(80));
 
                     EditorGUILayout.EndHorizontal();
 
-                    if (isOptimal)
-                    {
-                        GUI.backgroundColor = Color.white;
-                    }
+                    GUI.backgroundColor = Color.white;
                 }
 
                 EditorGUILayout.EndScrollView();
@@ -189,13 +197,6 @@ namespace TripeaksSolitaire.Editor
                 _jsonFilePath = path;
                 Debug.Log($"Selected JSON: {_jsonFilePath}");
             }
-        }
-
-        private int EstimateTime()
-        {
-            int totalSims = (_maxDeckSize - _minDeckSize + 1) * _simulationsPerSize;
-            // Estimate ~0.001 seconds per simulation
-            return Mathf.CeilToInt(totalSims * 0.001f);
         }
 
         private async void StartSimulation()
@@ -222,30 +223,30 @@ namespace TripeaksSolitaire.Editor
             }
 
             _currentStatus = "Running simulations...";
+            Repaint();
 
-            // Run simulations
+            // Run simulations using DifficultyTuner
             DifficultyTuner tuner = new DifficultyTuner();
+            
+            // We'll run simulations manually to show progress
             _results = new List<DifficultyTuner.TuningResult>();
-
             int totalDeckSizes = _maxDeckSize - _minDeckSize + 1;
-            int currentDeckIndex = 0;
 
             for (int deckSize = _minDeckSize; deckSize <= _maxDeckSize; deckSize++)
             {
+                int currentIndex = deckSize - _minDeckSize;
                 _currentStatus = $"Testing deck size {deckSize}...";
-                _simulationProgress = (float)currentDeckIndex / totalDeckSizes;
+                _simulationProgress = (float)currentIndex / totalDeckSizes;
                 Repaint();
 
                 var result = RunSimulationsForDeckSize(levelData, deckSize, _simulationsPerSize);
                 _results.Add(result);
 
-                currentDeckIndex++;
-
                 // Allow UI to update
                 await System.Threading.Tasks.Task.Delay(1);
             }
 
-            // Find optimal
+            // Find optimal using DifficultyTuner logic
             _optimalDeckSize = tuner.FindOptimalDeckSize(_results, _targetCloseWinRate);
 
             _currentStatus = "Complete!";
@@ -254,11 +255,25 @@ namespace TripeaksSolitaire.Editor
 
             Repaint();
 
-            EditorUtility.DisplayDialog(
-                "Simulation Complete!",
-                $"Optimal Deck Size: {_optimalDeckSize} cards\n\n" +
-                $"Check the results table below for details.",
-                "OK");
+            var optimal = _results.Find(r => r.deckSize == _optimalDeckSize);
+            
+            string title = optimal.meetsTarget ? "✅ Simulation Complete!" : "⚠️ Simulation Complete";
+            string icon = optimal.meetsTarget ? "✅" : "⚠️";
+            
+            string message = $"{icon} Recommended Deck Size: {_optimalDeckSize} cards\n\n";
+            message += $"Win Rate: {optimal.winRate:P1}\n";
+            message += $"Close Win Rate: {optimal.closeWinRate:P1}\n";
+            
+            if (optimal.meetsTarget)
+            {
+                message += $"\n✅ Meets target of ≥{_targetCloseWinRate:P0}!";
+            }
+            else
+            {
+                message += $"\n⚠️ Does not meet {_targetCloseWinRate:P0} target.\nConsider adjusting settings.";
+            }
+
+            EditorUtility.DisplayDialog(title, message, "OK");
         }
 
         private LevelData LoadLevelFromFile(string filePath)
@@ -303,6 +318,9 @@ namespace TripeaksSolitaire.Editor
                 }
             }
 
+            float closeWinRate = wins > 0 ? (float)closeWins / wins : 0f;
+            bool meetsTarget = wins > 0 && closeWinRate >= _targetCloseWinRate;
+
             return new DifficultyTuner.TuningResult
             {
                 deckSize = deckSize,
@@ -310,9 +328,10 @@ namespace TripeaksSolitaire.Editor
                 wins = wins,
                 closeWins = closeWins,
                 winRate = (float)wins / simulations,
-                closeWinRate = wins > 0 ? (float)closeWins / wins : 0f,
+                closeWinRate = closeWinRate,
                 avgMovesOnWin = wins > 0 ? totalMoves / wins : 0f,
-                avgCardsRemainingOnWin = wins > 0 ? totalCardsRemaining / wins : 0f
+                avgCardsRemainingOnWin = wins > 0 ? totalCardsRemaining / wins : 0f,
+                meetsTarget = meetsTarget
             };
         }
 
@@ -325,14 +344,14 @@ namespace TripeaksSolitaire.Editor
             using (StreamWriter writer = new StreamWriter(path))
             {
                 // Header
-                writer.WriteLine("DeckSize,TotalGames,Wins,CloseWins,WinRate,CloseWinRate,AvgMovesOnWin,AvgCardsRemainingOnWin");
+                writer.WriteLine("DeckSize,TotalGames,Wins,CloseWins,WinRate,CloseWinRate,AvgMovesOnWin,AvgCardsRemainingOnWin,MeetsTarget");
 
                 // Data
                 foreach (var result in _results)
                 {
                     writer.WriteLine($"{result.deckSize},{result.totalGames},{result.wins},{result.closeWins}," +
                                    $"{result.winRate:F4},{result.closeWinRate:F4}," +
-                                   $"{result.avgMovesOnWin:F2},{result.avgCardsRemainingOnWin:F2}");
+                                   $"{result.avgMovesOnWin:F2},{result.avgCardsRemainingOnWin:F2},{result.meetsTarget}");
                 }
             }
 

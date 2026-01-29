@@ -15,6 +15,7 @@ namespace TripeaksSolitaire.Simulation
         private int _moveCount;
         private bool _gameOver;
         private bool _isWin;
+        private System.Random _deckRng; // RNG for on-demand card generation
 
         // Simplified card for simulation (no MonoBehaviour)
         public class SimCard
@@ -24,6 +25,7 @@ namespace TripeaksSolitaire.Simulation
             public int depth;
             public Vector2 position;
             public bool isOnBoard = true;
+            public bool isFaceUp;
             public bool hasLock;
             public bool isKey;
             public bool isZap;
@@ -36,11 +38,20 @@ namespace TripeaksSolitaire.Simulation
                 id = data.id;
                 depth = data.depth;
                 position = new Vector2(data.x, data.y);
+                isFaceUp = data.faceUp;
 
-                // Set value
+                // Set value using System.Random for better randomness
                 if (data.type == "value")
                 {
-                    value = data.random ? Random.Range(1, 14) : data.value;
+                    if (data.random)
+                    {
+                        System.Random rng = new System.Random(System.Guid.NewGuid().GetHashCode());
+                        value = rng.Next(1, 14);
+                    }
+                    else
+                    {
+                        value = data.value;
+                    }
                 }
 
                 // Set special types
@@ -89,17 +100,21 @@ namespace TripeaksSolitaire.Simulation
                 _boardCards.Add(new SimCard(cardData));
             }
 
-            // Initialize draw pile with custom size
+            // Initialize RNG for on-demand card generation
+            System.Random rng = new System.Random(System.Guid.NewGuid().GetHashCode());
+            
+            // Store deck size only (cards generated on demand)
             _drawPile = new List<int>();
             for (int i = 0; i < deckSize; i++)
             {
-                _drawPile.Add(Random.Range(1, 14));
+                _drawPile.Add(-1); // Placeholder - will be generated when drawn
             }
+            _deckRng = rng;
 
-            // Draw initial card
+            // Draw initial card (generate on demand)
             if (_drawPile.Count > 0)
             {
-                _currentPlayCard = _drawPile[_drawPileIndex];
+                _currentPlayCard = _deckRng.Next(1, 14);
                 _drawPileIndex++;
             }
 
@@ -142,7 +157,8 @@ namespace TripeaksSolitaire.Simulation
                 // No valid cards - must draw from pile
                 if (_drawPileIndex < _drawPile.Count)
                 {
-                    _currentPlayCard = _drawPile[_drawPileIndex];
+                    // Generate card on demand
+                    _currentPlayCard = _deckRng.Next(1, 14);
                     _drawPileIndex++;
                     IncrementMove();
                 }
@@ -316,24 +332,47 @@ namespace TripeaksSolitaire.Simulation
                 ClearRow(card);
             }
 
-            // Update play pile
-            _currentPlayCard = card.value;
+            // Update play pile ONLY for value cards
+            // Keys and Zaps don't change the current play card value
+            if (!card.isKey && !card.isZap)
+            {
+                _currentPlayCard = card.value;
+            }
 
             // Remove from board
             card.isOnBoard = false;
 
+            // Reveal any cards that are now uncovered
+            RevealUncoveredCards();
+
             IncrementMove();
             CheckWinCondition();
+        }
+
+        private void RevealUncoveredCards()
+        {
+            // Check all face-down cards and reveal them if they're no longer covered
+            foreach (var card in _boardCards)
+            {
+                if (!card.isOnBoard) continue;
+                if (card.isFaceUp) continue; // Skip already face-up cards
+
+                // If card is not covered, reveal it
+                if (!IsCovered(card))
+                {
+                    card.isFaceUp = true;
+                }
+            }
         }
 
         private void IncrementMove()
         {
             _moveCount++;
 
-            // Decrement bomb timers
+            // Decrement bomb timers ONLY for face-up bombs
             foreach (var card in _boardCards)
             {
-                if (card.hasBomb && card.isOnBoard)
+                if (card.hasBomb && card.isOnBoard && card.isFaceUp)
                 {
                     card.bombTimer--;
                     if (card.bombTimer <= 0)
@@ -347,11 +386,12 @@ namespace TripeaksSolitaire.Simulation
 
         private void UnlockAllLocks()
         {
+            // Remove all lock cards from the board
             foreach (var card in _boardCards)
             {
-                if (card.isOnBoard)
+                if (card.hasLock && card.isOnBoard)
                 {
-                    card.hasLock = false;
+                    card.isOnBoard = false;
                 }
             }
         }
@@ -379,6 +419,7 @@ namespace TripeaksSolitaire.Simulation
             foreach (var card in _boardCards)
             {
                 if (!card.isOnBoard) continue;
+                if (!card.isFaceUp) continue; // Only face-up cards are playable!
                 if (!IsCovered(card))
                 {
                     playable.Add(card);
