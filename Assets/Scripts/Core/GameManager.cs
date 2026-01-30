@@ -4,7 +4,7 @@ using TripeaksSolitaire.Gameplay;
 using System.Collections.Generic;
 using System.Linq;
 
-public class GameManager : MonoBehaviour
+public class GameManager : MonoBehaviour, FavorableCardGenerator.IGameState
 {
     [Header("References")]
     public Board board;
@@ -22,8 +22,26 @@ public class GameManager : MonoBehaviour
 
     [Header("Favorable Randomness")]
     [Range(0f, 1f)]
-    [Tooltip("Probability of generating favorable (adjacent) cards. 0.51 = 51% favorable, 0.5 = completely random")]
+    [Tooltip("Base probability of generating favorable cards")]
     public float favorableProbability = 0.51f;
+    
+    [Range(0f, 1f)]
+    [Tooltip("Probability boost when draw pile has <= 2 cards remaining")]
+    public float finalFavorableProbability = 0.25f; // +25%
+    public int minimumCardsToIncreaseProbability = 5;
+
+    [Range(0f, 1f)]
+    [Tooltip("Probability boost when urgent bomb (timer <= 2) is on board")]
+    public float bombFavorableProbability = 0.33f; // +33%
+    public int bombTimerToIncreaseProbability = 4;
+    
+    [Header("Current Probability (Read Only)")]
+    [Range(0f, 1f)]
+    [Tooltip("Current effective probability with all boosts applied")]
+    public float currentEffectiveProbability = 0.51f; // Updated in real-time
+
+    private float _currentFavorableProbability; // Cached current probability
+    private bool _hadUrgentBomb = false; // Track if we had urgent bomb
 
     [Header("Undo System")]
     public UnityEngine.UI.Button undoButton;
@@ -36,6 +54,33 @@ public class GameManager : MonoBehaviour
     private List<Card> _allBombs = new List<Card>();
     private TripeaksGameLogic _gameLogic = new TripeaksGameLogic();
 
+    // Implementation of IGameState interface
+    public int GetDrawPileRemainingCards() => drawPile.RemainingCards();
+    
+    public List<int> GetUrgentBombValues()
+    {
+        return _allBombs
+            .Where(b => b.isOnBoard && b.isFaceUp && b.bombModifier != null && b.bombModifier.timer <= 3 && b.value != -1)
+            .OrderBy(b => b.bombModifier.timer)
+            .Select(b => b.value)
+            .ToList();
+    }
+    
+    public List<int> GetPlayableCardValues()
+    {
+        // Use Board's existing playability system
+        var playableCards = board.allCards
+            .Where(c => c.isOnBoard && c.isPlayable && c.value != -1 && 
+                       c.cardType != Card.CardType.Key && 
+                       c.cardType != Card.CardType.Zap && 
+                       c.cardType != Card.CardType.Lock)
+            .ToList();
+        
+        return playableCards.Select(c => c.value).ToList();
+    }
+    
+    public int GetCurrentPlayValue() => playPile.currentValue;
+
     void Start()
     {
         LoadAndStartLevel();
@@ -44,6 +89,12 @@ public class GameManager : MonoBehaviour
 
     void Update()
     {
+        // Update current effective probability in real-time (for Inspector display)
+        if (!gameOver)
+        {
+            CalculateDynamicFavorableProbability();
+        }
+        
         // Press Z to undo
         if (Input.GetKeyDown(KeyCode.Z) && _undoStack.Count > 0)
         {
@@ -457,22 +508,29 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        // Save state before drawing
-        SaveCurrentState();
-
-        // Draw new card using smart favorable logic
+        // Generate card value FIRST if needed (before saving state)
         int card = drawPile.deck[drawPile.currentIndex];
         if (card == -1)
         {
             card = GenerateFavorableCardValue();
             drawPile.deck[drawPile.currentIndex] = card;
+            Debug.Log($"🎲 Generated new card value: {card}");
         }
+        else
+        {
+            Debug.Log($"📋 Using existing card value: {card}");
+        }
+
+        // NOW save state (after generating value)
+        SaveCurrentState();
+
+        // Draw the card
         drawPile.currentIndex++;
         drawPile.UpdateVisual();
         
         playPile.SetCard(card);
 
-        Debug.Log($"Drew new card from pile: {card}");
+        Debug.Log($"Drew card from pile: {card} ({drawPile.RemainingCards()} cards remaining)");
 
         // Increment move counter (drawing also counts as a move)
         IncrementMove();
@@ -573,6 +631,54 @@ public class GameManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Calculate current favorable probability based on game state
+    /// </summary>
+    private float CalculateDynamicFavorableProbability()
+    {
+        float probability = favorableProbability; // Start with base
+        
+        // BOOST 1: Low cards in draw pile (<= 2 cards)
+        int cardsInDraw = drawPile.RemainingCards();
+        if (cardsInDraw <= minimumCardsToIncreaseProbability)
+        {
+            probability += finalFavorableProbability;
+            Debug.Log($"🎯 Final stage boost: +{finalFavorableProbability:P0} (Draw pile: {cardsInDraw} cards)");
+        }
+        
+        // BOOST 2: Urgent bomb on board (timer <= 2)
+        var urgentBombs = _allBombs
+            .Where(b => b.isOnBoard && b.isFaceUp && b.bombModifier != null && b.bombModifier.timer <= bombTimerToIncreaseProbability)
+            .ToList();
+        
+        if (urgentBombs.Count > 0)
+        {
+            probability += bombFavorableProbability;
+            _hadUrgentBomb = true;
+            Debug.Log($"💣 Urgent bomb boost: +{bombFavorableProbability:P0} (Bomb timer: {urgentBombs[0].bombModifier.timer})");
+        }
+        else if (_hadUrgentBomb)
+        {
+            // Bomb was cleared, log return to normal
+            _hadUrgentBomb = false;
+            Debug.Log($"✅ Bomb cleared, probability returned to normal");
+        }
+        
+        // Cap at 1.0 (100%)
+        probability = Mathf.Min(probability, 1.0f);
+        
+        // Update visible slider in Inspector
+        currentEffectiveProbability = probability;
+        
+        if (probability != _currentFavorableProbability)
+        {
+            _currentFavorableProbability = probability;
+            Debug.Log($"📊 Current favorable probability: {probability:P1}");
+        }
+        
+        return probability;
+    }
+
+    /// <summary>
     /// Generate a favorable card value considering current game state
     /// Priority: 1. Adjacent to bombs, 2. Adjacent to playable cards, 3. Adjacent to play pile
     /// </summary>
@@ -580,8 +686,11 @@ public class GameManager : MonoBehaviour
     {
         System.Random rng = new System.Random(System.DateTime.Now.Millisecond + UnityEngine.Random.Range(0, 10000));
         
+        // Get dynamic probability based on game state
+        float currentProbability = CalculateDynamicFavorableProbability();
+        
         // Check if we should generate favorable
-        if (rng.NextDouble() > favorableProbability)
+        if (rng.NextDouble() > currentProbability)
         {
             // Random generation
             return rng.Next(1, 14);
@@ -591,7 +700,7 @@ public class GameManager : MonoBehaviour
 
         // PRIORITY 1: Adjacent to visible bombs with low timers
         var urgentBombs = _allBombs
-            .Where(b => b.isOnBoard && b.isFaceUp && b.bombModifier != null && b.bombModifier.timer <= 3 && b.value != -1)
+            .Where(b => b.isOnBoard && b.isFaceUp && b.bombModifier != null && b.bombModifier.timer <= bombTimerToIncreaseProbability && b.value != -1)
             .OrderBy(b => b.bombModifier.timer)
             .ToList();
 

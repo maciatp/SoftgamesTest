@@ -17,6 +17,47 @@ namespace TripeaksSolitaire.Simulation
         private bool _isWin;
         private TripeaksGameLogic _gameLogic = new TripeaksGameLogic();
         private float _favorableProbability = 0.51f;
+        private float _finalFavorableProbability = 0.25f;
+        private float _bombFavorableProbability = 0.33f;
+
+        // Adapter for FavorableCardGenerator
+        private class SimulatorGameState : FavorableCardGenerator.IGameState
+        {
+            private GameSimulator _simulator;
+            
+            public SimulatorGameState(GameSimulator simulator)
+            {
+                _simulator = simulator;
+            }
+            
+            public int GetDrawPileRemainingCards()
+            {
+                return _simulator._drawPile.Count - _simulator._drawPileIndex;
+            }
+            
+            public List<int> GetUrgentBombValues()
+            {
+                return _simulator._boardCards
+                    .Where(b => b.isOnBoard && b.isFaceUp && b.hasBomb && b.bombTimer <= 3 && b.value != -1)
+                    .OrderBy(b => b.bombTimer)
+                    .Select(b => b.value)
+                    .ToList();
+            }
+            
+            public List<int> GetPlayableCardValues()
+            {
+                var playableCards = _simulator.GetPlayableCards();
+                return playableCards
+                    .Where(c => c.value != -1 && !c.isKey && !c.isZap && !c.hasLock)
+                    .Select(c => c.value)
+                    .ToList();
+            }
+            
+            public int GetCurrentPlayValue()
+            {
+                return _simulator._currentPlayCard;
+            }
+        }
 
         // Simplified card for simulation (no MonoBehaviour)
         public class SimCard
@@ -94,7 +135,7 @@ namespace TripeaksSolitaire.Simulation
             public string lossReason;
         }
 
-        public SimulationResult SimulateGame(LevelData levelData, int deckSize, float favorableProbability = 0.51f)
+        public SimulationResult SimulateGame(LevelData levelData, int deckSize, float favorableProbability = 0.51f, float finalFavorableProbability = 0.25f, float bombFavorableProbability = 0.33f)
         {
             _levelData = levelData;
             _gameOver = false;
@@ -102,6 +143,8 @@ namespace TripeaksSolitaire.Simulation
             _moveCount = 0;
             _drawPileIndex = 0;
             _favorableProbability = favorableProbability;
+            _finalFavorableProbability = finalFavorableProbability;
+            _bombFavorableProbability = bombFavorableProbability;
 
             // Initialize board
             _boardCards = new List<SimCard>();
@@ -148,75 +191,23 @@ namespace TripeaksSolitaire.Simulation
         }
 
         /// <summary>
-        /// Generate favorable card value with smart priority system
-        /// Priority: 1. Adjacent to bombs, 2. Adjacent to playable cards, 3. Adjacent to play pile
+        /// Generate favorable card value using centralized logic
         /// </summary>
         private int GenerateFavorableCardValue()
         {
             System.Random rng = new System.Random(System.Guid.NewGuid().GetHashCode());
             
-            // Check if we should generate favorable
-            if (rng.NextDouble() > _favorableProbability)
-            {
-                return rng.Next(1, 14);
-            }
-
-            List<int> favorableValues = new List<int>();
-
-            // PRIORITY 1: Adjacent to visible bombs with low timers
-            var urgentBombs = _boardCards
-                .Where(b => b.isOnBoard && b.isFaceUp && b.hasBomb && b.bombTimer <= 3 && b.value != -1)
-                .OrderBy(b => b.bombTimer)
-                .ToList();
-
-            foreach (var bomb in urgentBombs)
-            {
-                int bombValue = bomb.value;
-                int lowerValue = bombValue - 1;
-                int higherValue = bombValue + 1;
-                
-                if (lowerValue < 1) lowerValue = 13;
-                if (higherValue > 13) higherValue = 1;
-                
-                if (!favorableValues.Contains(lowerValue)) favorableValues.Add(lowerValue);
-                if (!favorableValues.Contains(higherValue)) favorableValues.Add(higherValue);
-            }
-
-            // PRIORITY 2: Adjacent to playable cards on board
-            var playableCards = GetPlayableCards()
-                .Where(c => c.value != -1 && !c.isKey && !c.isZap && !c.hasLock)
-                .ToList();
-
-            foreach (var card in playableCards)
-            {
-                int cardValue = card.value;
-                int lowerValue = cardValue - 1;
-                int higherValue = cardValue + 1;
-                
-                if (lowerValue < 1) lowerValue = 13;
-                if (higherValue > 13) higherValue = 1;
-                
-                if (!favorableValues.Contains(lowerValue)) favorableValues.Add(lowerValue);
-                if (!favorableValues.Contains(higherValue)) favorableValues.Add(higherValue);
-            }
-
-            // PRIORITY 3: Adjacent to current play pile
-            int lower = _currentPlayCard - 1;
-            int higher = _currentPlayCard + 1;
+            // Use centralized probability calculation
+            var gameState = new SimulatorGameState(this);
+            float currentProbability = FavorableCardGenerator.CalculateDynamicProbability(
+                _favorableProbability,
+                _finalFavorableProbability,
+                _bombFavorableProbability,
+                gameState
+            );
             
-            if (lower < 1) lower = 13;
-            if (higher > 13) higher = 1;
-            
-            if (!favorableValues.Contains(lower)) favorableValues.Add(lower);
-            if (!favorableValues.Contains(higher)) favorableValues.Add(higher);
-            
-            // Pick random favorable value
-            if (favorableValues.Count > 0)
-            {
-                return favorableValues[rng.Next(favorableValues.Count)];
-            }
-            
-            return rng.Next(1, 14);
+            // Use centralized card generation
+            return FavorableCardGenerator.GenerateFavorableCard(currentProbability, gameState, rng);
         }
 
         private void PlayTurn()
@@ -245,271 +236,176 @@ namespace TripeaksSolitaire.Simulation
                     }
                     _currentPlayCard = card;
                     _drawPileIndex++;
-                    IncrementMove();
+                    _moveCount++;
+
+                    // Decrement all bomb timers
+                    DecrementAllBombTimers();
                 }
                 else
                 {
-                    // No cards in draw pile and no valid moves - game over
-                    GameOver(false);
+                    // No cards left to draw
+                    _gameOver = true;
+                    _isWin = false;
                 }
             }
-        }
-
-        private SimCard ChooseBestCard(List<SimCard> validCards)
-        {
-            // Advanced AI Strategy:
-            // 1. URGENT: Play bombs about to explode (timer <= 2)
-            // 2. PRIORITY: Play keys if locks exist
-            // 3. STRATEGIC: Prefer cards that uncover the most other cards
-            // 4. DEPTH: Prefer higher depth cards (they're on top, easier to access)
-            // 5. AVOID: Don't unnecessarily draw if we have valid moves
-
-            // 1. Check for urgent bombs
-            var urgentBombs = validCards.Where(c => c.hasBomb && c.bombTimer <= 2).ToList();
-            if (urgentBombs.Count > 0)
-            {
-                // Play the most urgent bomb
-                return urgentBombs.OrderBy(c => c.bombTimer).First();
-            }
-
-            // 2. Check for keys if locks exist
-            bool hasLockedCards = _boardCards.Any(c => c.isOnBoard && c.hasLock);
-            if (hasLockedCards)
-            {
-                var keys = validCards.Where(c => c.isKey).ToList();
-                if (keys.Count > 0)
-                {
-                    return keys.First();
-                }
-            }
-
-            // 3. Check for zaps - only use if they clear multiple cards
-            var zaps = validCards.Where(c => c.isZap).ToList();
-            if (zaps.Count > 0)
-            {
-                // Count how many cards each zap would clear
-                var bestZap = zaps.OrderByDescending(z => CountCardsInRow(z)).First();
-                if (CountCardsInRow(bestZap) >= 3) // Only use if clears 3+ cards
-                {
-                    return bestZap;
-                }
-            }
-
-            // 4. Score each card based on strategic value
-            var scoredCards = validCards.Select(card => new
-            {
-                card = card,
-                score = CalculateCardScore(card)
-            }).OrderByDescending(x => x.score).ToList();
-
-            // Pick the best scored card
-            return scoredCards.First().card;
-        }
-
-        private int CalculateCardScore(SimCard card)
-        {
-            int score = 0;
-
-            // Higher depth = higher priority (cards on top)
-            score += card.depth * 10;
-
-            // Cards that uncover more cards are better
-            int uncoversCount = CountCardsThisWouldUncover(card);
-            score += uncoversCount * 20;
-
-            // Bombs get priority based on timer
-            if (card.hasBomb)
-            {
-                score += (card.initialBombTimer - card.bombTimer) * 5;
-            }
-
-            // Keys are valuable if locks exist
-            if (card.isKey && _boardCards.Any(c => c.isOnBoard && c.hasLock))
-            {
-                score += 50;
-            }
-
-            return score;
-        }
-
-        private int CountCardsThisWouldUncover(SimCard card)
-        {
-            return _gameLogic.CountCardsUncovered(
-                card,
-                _boardCards,
-                c => c.isOnBoard,
-                c => c.depth,
-                c => c.position
-            );
-        }
-
-        private int CountCardsInRow(SimCard zapCard)
-        {
-            var cardsInRow = _gameLogic.GetCardsInRow(
-                zapCard,
-                _boardCards,
-                c => c.isOnBoard,
-                c => c.position
-            );
-            return cardsInRow.Count;
-        }
-
-        private bool CanPlayCard(SimCard card)
-        {
-            if (card.hasLock) return false;
-            if (card.isKey || card.isZap) return true;
-
-            // Check if value is adjacent
-            int diff = Mathf.Abs(card.value - _currentPlayCard);
-            return diff == 1 || diff == 12;
         }
 
         private void PlayCard(SimCard card)
         {
-            // Handle special cards
+            // Handle special effects
             if (card.isKey)
             {
                 UnlockAllLocks();
             }
             else if (card.isZap)
             {
-                ClearRow(card);
+                ClearHorizontalRow(card);
             }
 
-            // Update play pile ONLY for value cards
-            // Keys and Zaps don't change the current play card value
-            if (!card.isKey && !card.isZap)
-            {
-                _currentPlayCard = card.value;
-            }
+            // Set current play card
+            _currentPlayCard = card.value;
 
-            // Remove from board
+            // Remove card from board
             card.isOnBoard = false;
 
-            // Reveal any cards that are now uncovered
-            RevealUncoveredCards();
-
-            IncrementMove();
-            CheckWinCondition();
-        }
-
-        private void RevealUncoveredCards()
-        {
-            _gameLogic.RevealUncoveredCards(
-                _boardCards,
-                c => c.isOnBoard,
-                c => c.isFaceUp,
-                c => {
-                    c.isFaceUp = true;
-                    // Generate favorable value if not assigned
-                    if (c.value == -1)
-                    {
-                        c.value = GenerateFavorableCardValue();
-                    }
-                },
-                c => c.depth,
-                c => c.position
-            );
-        }
-
-        private void IncrementMove()
-        {
             _moveCount++;
 
-            // Decrement bomb timers ONLY for face-up bombs
-            foreach (var card in _boardCards)
-            {
-                if (card.hasBomb && card.isOnBoard && card.isFaceUp)
-                {
-                    card.bombTimer--;
-                    if (card.bombTimer <= 0)
-                    {
-                        GameOver(false);
-                        return;
-                    }
-                }
-            }
-        }
+            // Reveal newly uncovered cards
+            RevealUncoveredCards();
 
-        private void UnlockAllLocks()
-        {
-            // Remove all lock cards from the board
-            foreach (var card in _boardCards)
-            {
-                if (card.hasLock && card.isOnBoard)
-                {
-                    card.isOnBoard = false;
-                }
-            }
-        }
+            // Decrement all bomb timers
+            DecrementAllBombTimers();
 
-        private void ClearRow(SimCard zapCard)
-        {
-            float yThreshold = 30f;
-            foreach (var card in _boardCards)
+            // Check for win
+            if (AllCardsCleared())
             {
-                if (!card.isOnBoard) continue;
-                if (card == zapCard) continue;
-
-                float yDiff = Mathf.Abs(card.position.y - zapCard.position.y);
-                if (yDiff < yThreshold)
-                {
-                    card.isOnBoard = false;
-                }
+                _gameOver = true;
+                _isWin = true;
             }
         }
 
         private List<SimCard> GetPlayableCards()
         {
-            List<SimCard> playable = new List<SimCard>();
-
-            foreach (var card in _boardCards)
+            // A card is playable if it's on the board, face up, and not covered by other cards
+            var playable = new List<SimCard>();
+            
+            foreach (var card in _boardCards.Where(c => c.isOnBoard && c.isFaceUp))
             {
-                if (!card.isOnBoard) continue;
-                if (!card.isFaceUp) continue; // Only face-up cards are playable!
-                if (!IsCovered(card))
+                // Check if any other card is covering this one
+                bool isCovered = false;
+                foreach (var other in _boardCards.Where(c => c.isOnBoard && c.id != card.id))
+                {
+                    // Check if other card overlaps and is lower depth (covers this card)
+                    if (other.depth < card.depth)
+                    {
+                        float distance = Vector2.Distance(card.position, other.position);
+                        if (distance < 1.5f) // Cards overlap
+                        {
+                            isCovered = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!isCovered)
                 {
                     playable.Add(card);
                 }
             }
-
+            
             return playable;
         }
 
-        private bool IsCovered(SimCard card)
+        private bool CanPlayCard(SimCard card)
         {
-            foreach (var other in _boardCards)
+            if (card.hasLock) return false;
+            if (card.isKey) return true;
+            if (card.isZap) return true;
+            
+            int diff = Mathf.Abs(card.value - _currentPlayCard);
+            return diff == 1 || diff == 12; // Adjacent or wrap (Ace-King)
+        }
+
+        private SimCard ChooseBestCard(List<SimCard> validCards)
+        {
+            // Prioritize: Keys, Zaps, Cards with bombs, then random
+            var keyCard = validCards.FirstOrDefault(c => c.isKey);
+            if (keyCard != null) return keyCard;
+
+            var zapCard = validCards.FirstOrDefault(c => c.isZap);
+            if (zapCard != null) return zapCard;
+
+            var bombCard = validCards.FirstOrDefault(c => c.hasBomb && c.bombTimer <= 2);
+            if (bombCard != null) return bombCard;
+
+            return validCards[0]; // Just pick first
+        }
+
+        private void UnlockAllLocks()
+        {
+            foreach (var card in _boardCards.Where(c => c.hasLock && c.isOnBoard))
             {
-                if (!other.isOnBoard) continue;
-                if (other == card) continue;
-                if (other.depth <= card.depth) continue;
+                card.hasLock = false;
+            }
+        }
 
-                float xDiff = Mathf.Abs(card.position.x - other.position.x);
-                float yDiff = Mathf.Abs(card.position.y - other.position.y);
+        private void ClearHorizontalRow(SimCard zapCard)
+        {
+            float y = zapCard.position.y;
+            foreach (var card in _boardCards.Where(c => c.isOnBoard && Mathf.Approximately(c.position.y, y) && c.id != zapCard.id))
+            {
+                card.isOnBoard = false;
+            }
+        }
 
-                // Updated to match Board.cs threshold
-                if (xDiff < 150f && yDiff < 150f)
+        private void RevealUncoveredCards()
+        {
+            // Reveal all uncovered cards
+            foreach (var card in _boardCards.Where(c => c.isOnBoard && !c.isFaceUp))
+            {
+                // Check if any other card is covering this one
+                bool isCovered = false;
+                foreach (var other in _boardCards.Where(c => c.isOnBoard && c.id != card.id))
                 {
-                    return true;
+                    if (other.depth < card.depth)
+                    {
+                        float distance = Vector2.Distance(card.position, other.position);
+                        if (distance < 1.5f)
+                        {
+                            isCovered = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!isCovered)
+                {
+                    card.isFaceUp = true;
+                    // Generate favorable value if not assigned
+                    if (card.value == -1)
+                    {
+                        card.value = GenerateFavorableCardValue();
+                    }
                 }
             }
-            return false;
         }
 
-        private void CheckWinCondition()
+        private void DecrementAllBombTimers()
         {
-            int cardsOnBoard = _boardCards.Count(c => c.isOnBoard);
-
-            if (cardsOnBoard == 0)
+            foreach (var bomb in _boardCards.Where(b => b.isOnBoard && b.hasBomb))
             {
-                GameOver(true);
+                bomb.bombTimer--;
+                if (bomb.bombTimer <= 0)
+                {
+                    _gameOver = true;
+                    _isWin = false;
+                }
             }
         }
 
-        private void GameOver(bool win)
+        private bool AllCardsCleared()
         {
-            _gameOver = true;
-            _isWin = win;
+            return _boardCards.All(c => !c.isOnBoard);
         }
     }
 }

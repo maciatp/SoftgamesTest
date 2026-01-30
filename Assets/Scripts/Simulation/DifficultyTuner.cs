@@ -20,7 +20,7 @@ namespace TripeaksSolitaire.Simulation
             public bool meetsTarget; // Does this meet the 70% close win target?
         }
         
-        public List<TuningResult> RunTuningSimulations(LevelData levelData, int minDeckSize = 10, int maxDeckSize = 50, int simulationsPerSize = 100, float targetCloseWinRate = 0.7f, float favorableProbability = 0.51f)
+        public List<TuningResult> RunTuningSimulations(LevelData levelData, int minDeckSize = 10, int maxDeckSize = 50, int simulationsPerSize = 100, float targetCloseWinRate = 0.7f, float favorableProbability = 0.51f, float finalFavorableProbability = 0.25f, float bombFavorableProbability = 0.33f)
         {
             List<TuningResult> results = new List<TuningResult>();
             
@@ -34,7 +34,7 @@ namespace TripeaksSolitaire.Simulation
             
             for (int deckSize = minDeckSize; deckSize <= maxDeckSize; deckSize++)
             {
-                TuningResult result = RunSimulationsForDeckSize(levelData, deckSize, simulationsPerSize, targetCloseWinRate, favorableProbability);
+                TuningResult result = RunSimulationsForDeckSize(levelData, deckSize, simulationsPerSize, targetCloseWinRate, favorableProbability, finalFavorableProbability, bombFavorableProbability);
                 results.Add(result);
                 
                 string status = result.meetsTarget ? "✅" : "  ";
@@ -47,7 +47,7 @@ namespace TripeaksSolitaire.Simulation
             return results;
         }
         
-        private TuningResult RunSimulationsForDeckSize(LevelData levelData, int deckSize, int simulations, float targetCloseWinRate, float favorableProbability)
+        private TuningResult RunSimulationsForDeckSize(LevelData levelData, int deckSize, int simulations, float targetCloseWinRate, float favorableProbability, float finalFavorableProbability, float bombFavorableProbability)
         {
             GameSimulator simulator = new GameSimulator();
             
@@ -58,7 +58,7 @@ namespace TripeaksSolitaire.Simulation
             
             for (int i = 0; i < simulations; i++)
             {
-                var result = simulator.SimulateGame(levelData, deckSize, favorableProbability);
+                var result = simulator.SimulateGame(levelData, deckSize, favorableProbability, finalFavorableProbability, bombFavorableProbability);
                 
                 if (result.isWin)
                 {

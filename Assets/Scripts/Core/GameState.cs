@@ -69,7 +69,7 @@ namespace TripeaksSolitaire.Core
 
             // Restore draw pile
             drawPile.currentIndex = drawPileIndex;
-            drawPile.deck = new List<int>(drawPileDeck); // Restore deck
+            drawPile.deck = new List<int>(drawPileDeck); // Restore deck (with generated values preserved)
             drawPile.UpdateVisual();
 
             // Restore board cards

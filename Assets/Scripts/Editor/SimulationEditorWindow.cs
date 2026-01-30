@@ -23,6 +23,8 @@ namespace TripeaksSolitaire.Editor
         private int _simulationsPerSize = 500;
         private float _targetCloseWinRate = 0.7f;
         private float _favorableProbability = 0.51f;
+        private float _finalFavorableProbability = 0.25f;
+        private float _bombFavorableProbability = 0.33f;
 
         // Results
         private List<DifficultyTuner.TuningResult> _results;
@@ -71,7 +73,12 @@ namespace TripeaksSolitaire.Editor
             _maxDeckSize = EditorGUILayout.IntSlider("Max Deck Size", _maxDeckSize, _minDeckSize, 100);
             _simulationsPerSize = EditorGUILayout.IntSlider("Simulations Per Size", _simulationsPerSize, 500, 5000);
             _targetCloseWinRate = EditorGUILayout.Slider("Target Close Win %", _targetCloseWinRate, 0.5f, 0.9f);
-            _favorableProbability = EditorGUILayout.Slider("Favorable Probability", _favorableProbability, 0f, 1f);
+            
+            EditorGUILayout.Space(5);
+            EditorGUILayout.LabelField("Dynamic Probability System:", EditorStyles.boldLabel);
+            _favorableProbability = EditorGUILayout.Slider("Base Favorable Probability", _favorableProbability, 0f, 1f);
+            _finalFavorableProbability = EditorGUILayout.Slider("Final Stage Boost", _finalFavorableProbability, 0f, 1f);
+            _bombFavorableProbability = EditorGUILayout.Slider("Urgent Bomb Boost", _bombFavorableProbability, 0f, 1f);
 
             EditorGUILayout.Space(5);
             EditorGUILayout.HelpBox(
@@ -241,7 +248,7 @@ namespace TripeaksSolitaire.Editor
                 _simulationProgress = (float)currentIndex / totalDeckSizes;
                 Repaint();
 
-                var result = RunSimulationsForDeckSize(levelData, deckSize, _simulationsPerSize, _favorableProbability);
+                var result = RunSimulationsForDeckSize(levelData, deckSize, _simulationsPerSize, _favorableProbability, _finalFavorableProbability, _bombFavorableProbability);
                 _results.Add(result);
 
                 // Allow UI to update
@@ -294,7 +301,7 @@ namespace TripeaksSolitaire.Editor
             }
         }
 
-        private DifficultyTuner.TuningResult RunSimulationsForDeckSize(LevelData levelData, int deckSize, int simulations, float favorableProbability)
+        private DifficultyTuner.TuningResult RunSimulationsForDeckSize(LevelData levelData, int deckSize, int simulations, float favorableProbability, float finalFavorableProbability, float bombFavorableProbability)
         {
             GameSimulator simulator = new GameSimulator();
 
@@ -305,7 +312,7 @@ namespace TripeaksSolitaire.Editor
 
             for (int i = 0; i < simulations; i++)
             {
-                var result = simulator.SimulateGame(levelData, deckSize, favorableProbability);
+                var result = simulator.SimulateGame(levelData, deckSize, favorableProbability, finalFavorableProbability, bombFavorableProbability);
 
                 if (result.isWin)
                 {
