@@ -1,6 +1,7 @@
 using UnityEngine;
 using TripeaksSolitaire.Core;
 using TripeaksSolitaire.Gameplay;
+using TripeaksSolitaire.UI;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -10,6 +11,7 @@ public class GameManager : MonoBehaviour, FavorableCardGenerator.IGameState
     public Board board;
     public DrawPile drawPile;
     public PlayPile playPile;
+    public GameOverUI gameOverUI;
 
     [Header("Level Selection")]
     [Tooltip("Drag and drop the JSON file from Resources/Levels/ here")]
@@ -45,8 +47,8 @@ public class GameManager : MonoBehaviour, FavorableCardGenerator.IGameState
 
     [Header("Undo System")]
     public UnityEngine.UI.Button undoButton;
-    public UnityEngine.UI.Text undoCountText; // Optional: shows undo count
-    public int maxUndoSteps = 999; // Unlimited by default
+    UnityEngine.UI.Text undoCountText; // Optional: shows undo count
+    int maxUndoSteps = 999; // Unlimited by default
 
     private Stack<GameState> _undoStack = new Stack<GameState>();
 
@@ -122,6 +124,12 @@ public class GameManager : MonoBehaviour, FavorableCardGenerator.IGameState
         {
             Debug.LogError("❌ No level JSON file assigned! Please drag a JSON file to the 'Level Json File' field in the Inspector.");
             return;
+        }
+        
+        // Hide game over UI if showing
+        if (gameOverUI != null)
+        {
+            gameOverUI.Hide();
         }
         
         Debug.Log($"Loading level: {levelJsonFile.name}");
@@ -770,7 +778,22 @@ public class GameManager : MonoBehaviour, FavorableCardGenerator.IGameState
 
         int cardsOnBoard = board.allCards.Count(c => c.isOnBoard);
         int cardsInDraw = drawPile.RemainingCards();
+        bool isCloseWin = win && cardsInDraw <= 2;
 
+        // Show UI message
+        if (gameOverUI != null)
+        {
+            if (win)
+            {
+                gameOverUI.ShowVictory(isCloseWin);
+            }
+            else
+            {
+                gameOverUI.ShowDefeat(reason);
+            }
+        }
+
+        // Log to console
         string message = new string("");
         
         if (win)
@@ -781,7 +804,7 @@ public class GameManager : MonoBehaviour, FavorableCardGenerator.IGameState
             message += $"  • Total Moves: {moveCount}\n";
             message += $"  • Cards Remaining in Draw Pile: {cardsInDraw}\n";
             
-            if (cardsInDraw <= 2)
+            if (isCloseWin)
             {
                 message += $"  • 🌟 CLOSE WIN ACHIEVED! ({cardsInDraw} cards left)\n";
             }

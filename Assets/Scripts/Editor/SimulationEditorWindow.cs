@@ -18,6 +18,7 @@ namespace TripeaksSolitaire.Editor
 
         // Settings
         private string _jsonFilePath = "";
+        private int _loadedLevelDeckSize = 0; // Store the deck size from loaded level
         private int _minDeckSize = 10;
         private int _maxDeckSize = 50;
         private int _simulationsPerSize = 500;
@@ -25,6 +26,8 @@ namespace TripeaksSolitaire.Editor
         private float _favorableProbability = 0.51f;
         private float _finalFavorableProbability = 0.25f;
         private float _bombFavorableProbability = 0.33f;
+        private int _minimumCardsToIncreaseProbability = 2;
+        private int _bombTimerToIncreaseProbability = 3;
 
         // Results
         private List<DifficultyTuner.TuningResult> _results;
@@ -61,6 +64,13 @@ namespace TripeaksSolitaire.Editor
                 BrowseForJSON();
             }
             EditorGUILayout.EndHorizontal();
+            
+            // Show deck size right after the button if level is loaded
+            if (_loadedLevelDeckSize > 0)
+            {
+                EditorGUILayout.Space(5);
+                EditorGUILayout.LabelField($"Current DrawPile in loaded level: {_loadedLevelDeckSize} cards", EditorStyles.boldLabel);
+            }
 
             EditorGUILayout.Space(5);
             DrawSeparator();
@@ -69,8 +79,8 @@ namespace TripeaksSolitaire.Editor
             EditorGUILayout.Space(5);
             EditorGUILayout.LabelField("2. Simulation Settings", EditorStyles.boldLabel);
 
-            _minDeckSize = EditorGUILayout.IntSlider("Min Deck Size", _minDeckSize, 5, 100);
-            _maxDeckSize = EditorGUILayout.IntSlider("Max Deck Size", _maxDeckSize, _minDeckSize, 100);
+            _minDeckSize = EditorGUILayout.IntSlider("Min Deck Size", _minDeckSize, 5, 10);
+            _maxDeckSize = EditorGUILayout.IntSlider("Max Deck Size", _maxDeckSize, _minDeckSize, 40);
             _simulationsPerSize = EditorGUILayout.IntSlider("Simulations Per Size", _simulationsPerSize, 500, 5000);
             _targetCloseWinRate = EditorGUILayout.Slider("Target Close Win %", _targetCloseWinRate, 0.5f, 0.9f);
             
@@ -172,7 +182,8 @@ namespace TripeaksSolitaire.Editor
                     if (_optimalDeckResult != null)
                     {
                         isOptimal = result.deckSize == _optimalDeckResult.optimalDeckSize;
-                        isInRange = _optimalDeckResult.qualifyingDeckSizes.Contains(result.deckSize);
+                        isInRange = _optimalDeckResult.qualifyingDeckSizes != null && 
+                                    ((System.Collections.Generic.List<int>)_optimalDeckResult.qualifyingDeckSizes).Contains(result.deckSize);
                     }
 
                     if (isOptimal)
@@ -198,11 +209,11 @@ namespace TripeaksSolitaire.Editor
                     
                     // Avg Cards with optional OPTIMAL indicator at the end
                     string avgCardsLabel = $"{result.avgCardsRemainingOnWin:F2}";
-                    if (isOptimal)
+                    if (isOptimal && !_isSimulating) // Only show OPTIMAL after simulation completes
                     {
-                        avgCardsLabel += " ★ OPTIMAL";
+                        avgCardsLabel += " ★ OPTIMAL DECK SIZE";
                     }
-                    EditorGUILayout.LabelField(avgCardsLabel, GUILayout.Width(120));
+                    EditorGUILayout.LabelField(avgCardsLabel, GUILayout.Width(200));
 
                     EditorGUILayout.EndHorizontal();
 
@@ -228,7 +239,27 @@ namespace TripeaksSolitaire.Editor
             if (!string.IsNullOrEmpty(path))
             {
                 _jsonFilePath = path;
-                Debug.Log($"Selected JSON: {_jsonFilePath}");
+                
+                // Load the level and get deck size
+                LevelData levelData = LoadLevelFromFile(path);
+                if (levelData != null)
+                {
+                    // cards_in_stack is a List - get its count for the deck size
+                    if (levelData.settings.cards_in_stack != null)
+                    {
+                        _loadedLevelDeckSize = levelData.settings.cards_in_stack.Count;
+                    }
+                    else
+                    {
+                        _loadedLevelDeckSize = 0;
+                    }
+                    // Debug.Log removed - info shown in UI
+                }
+                else
+                {
+                    _loadedLevelDeckSize = 0;
+                    Debug.LogError($"Failed to load level from: {path}");
+                }
             }
         }
 
@@ -323,7 +354,6 @@ namespace TripeaksSolitaire.Editor
             {
                 string jsonContent = File.ReadAllText(filePath);
                 LevelData levelData = Newtonsoft.Json.JsonConvert.DeserializeObject<LevelData>(jsonContent);
-                Debug.Log($"Loaded level {levelData.settings.level_number} with {levelData.cards.Count} cards");
                 return levelData;
             }
             catch (System.Exception e)
@@ -344,7 +374,7 @@ namespace TripeaksSolitaire.Editor
 
             for (int i = 0; i < simulations; i++)
             {
-                var result = simulator.SimulateGame(levelData, deckSize, favorableProbability, finalFavorableProbability, bombFavorableProbability);
+                var result = simulator.SimulateGame(levelData, deckSize, favorableProbability, finalFavorableProbability, bombFavorableProbability, _minimumCardsToIncreaseProbability, _bombTimerToIncreaseProbability);
 
                 if (result.isWin)
                 {
@@ -384,23 +414,35 @@ namespace TripeaksSolitaire.Editor
 
             using (StreamWriter writer = new StreamWriter(path))
             {
-                // Metadata header
+                // Metadata header with ALL probability values
                 writer.WriteLine($"# Simulation Metadata");
-                writer.WriteLine($"# Favorable Probability: {_favorableProbability:F2}");
+                writer.WriteLine($"# Base Favorable Probability: {_favorableProbability.ToString("F2").Replace(".", ",")}");
+                writer.WriteLine($"# Final Stage Boost: {_finalFavorableProbability.ToString("F2").Replace(".", ",")}");
+                writer.WriteLine($"# Urgent Bomb Boost: {_bombFavorableProbability.ToString("F2").Replace(".", ",")}");
                 writer.WriteLine($"# Target Close Win Rate: {_targetCloseWinRate:P0}");
                 writer.WriteLine($"# Simulations Per Size: {_simulationsPerSize}");
+                
+                // Add optimal deck info
+                if (_optimalDeckResult != null)
+                {
+                    writer.WriteLine($"# Optimal Deck Range: {_optimalDeckResult.minDeckSize} to {_optimalDeckResult.maxDeckSize}");
+                    writer.WriteLine($"# Recommended Deck Size: {_optimalDeckResult.optimalDeckSize} (average of range)");
+                }
+                
                 writer.WriteLine($"# Export Date: {System.DateTime.Now:yyyy-MM-dd HH:mm:ss}");
                 writer.WriteLine();
                 
-                // Header
-                writer.WriteLine("DeckSize,TotalGames,Wins,CloseWins,WinRate,CloseWinRate,AvgMovesOnWin,AvgCardsRemainingOnWin,MeetsTarget");
+                // Header with TAB separator
+                writer.WriteLine("DeckSize\tWins\tCloseWins\tWinRate\tCloseWinRate\tAvgMovesOnWin\tAvgCardsRemainingOnWin\tMeetsTarget\tIsOptimal");
 
-                // Data
+                // Data with TAB separator and comma for decimals
                 foreach (var result in _results)
                 {
-                    writer.WriteLine($"{result.deckSize},{result.totalGames},{result.wins},{result.closeWins}," +
-                                   $"{result.winRate:F4},{result.closeWinRate:F4}," +
-                                   $"{result.avgMovesOnWin:F2},{result.avgCardsRemainingOnWin:F2},{result.meetsTarget}");
+                    bool isOptimal = _optimalDeckResult != null && result.deckSize == _optimalDeckResult.optimalDeckSize;
+                    
+                    writer.WriteLine($"{result.deckSize}\t{result.wins}\t{result.closeWins}\t" +
+                                   $"{result.winRate.ToString("F4").Replace(".", ",")}\t{result.closeWinRate.ToString("F4").Replace(".", ",")}\t" +
+                                   $"{result.avgMovesOnWin.ToString("F2").Replace(".", ",")}\t{result.avgCardsRemainingOnWin.ToString("F2").Replace(".", ",")}\t{result.meetsTarget}\t{isOptimal}");
                 }
             }
 

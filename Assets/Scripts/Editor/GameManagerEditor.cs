@@ -48,16 +48,25 @@ public class GameManagerEditor : Editor
             EditorGUILayout.LabelField("Boost Breakdown:", EditorStyles.miniBoldLabel);
             EditorGUILayout.LabelField($"  Base: {gameManager.favorableProbability:P0}");
             
-            // Check for final stage boost
-            if (gameManager.drawPile != null && gameManager.drawPile.RemainingCards() <= 2)
+            // Calculate expected base
+            float baseProbability = gameManager.favorableProbability;
+            float totalExpected = baseProbability;
+            
+            // Check if Final Stage boost should be active
+            int remainingCards = 999; // Default high value
+            if (gameManager.drawPile != null && gameManager.drawPile.deck != null)
             {
-                EditorGUILayout.LabelField($"  + Final Stage: {gameManager.finalFavorableProbability:P0} 🎯", EditorStyles.boldLabel);
+                remainingCards = gameManager.drawPile.deck.Count - gameManager.drawPile.currentIndex;
             }
             
-            // Check for bomb boost (simplified check)
-            bool hasBombBoost = gameManager.currentEffectiveProbability > 
-                               (gameManager.favorableProbability + gameManager.finalFavorableProbability + 0.01f);
-            if (hasBombBoost)
+            if (remainingCards <= 2)
+            {
+                EditorGUILayout.LabelField($"  + Final Stage: {gameManager.finalFavorableProbability:P0} 🎯 (Cards left: {remainingCards})", EditorStyles.boldLabel);
+                totalExpected += gameManager.finalFavorableProbability;
+            }
+            
+            // Check if Bomb boost should be active
+            if (gameManager.currentEffectiveProbability > totalExpected + 0.05f)
             {
                 EditorGUILayout.LabelField($"  + Urgent Bomb: {gameManager.bombFavorableProbability:P0} 💣", EditorStyles.boldLabel);
             }

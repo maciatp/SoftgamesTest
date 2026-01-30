@@ -16,9 +16,11 @@ namespace TripeaksSolitaire.Simulation
         private bool _gameOver;
         private bool _isWin;
         private TripeaksGameLogic _gameLogic = new TripeaksGameLogic();
-        private float _favorableProbability = 0.51f;
-        private float _finalFavorableProbability = 0.25f;
+        private float _favorableProbability = 0.15f;
+        private float _finalFavorableProbability = 0.66f;
         private float _bombFavorableProbability = 0.33f;
+        private int _minimumCardsToIncreaseProbability = 2;
+        private int _bombTimerToIncreaseProbability = 3;
 
         // Adapter for FavorableCardGenerator - OPTIMIZED with caching
         private class SimulatorGameState : FavorableCardGenerator.IGameState
@@ -45,7 +47,7 @@ namespace TripeaksSolitaire.Simulation
                 for (int i = 0; i < _simulator._boardCards.Count; i++)
                 {
                     var b = _simulator._boardCards[i];
-                    if (b.isOnBoard && b.isFaceUp && b.hasBomb && b.bombTimer <= 3 && b.value != -1)
+                    if (b.isOnBoard && b.isFaceUp && b.hasBomb && b.bombTimer <= _simulator._bombTimerToIncreaseProbability && b.value != -1)
                     {
                         _urgentBombCache.Add(b.value);
                     }
@@ -154,7 +156,7 @@ namespace TripeaksSolitaire.Simulation
             public string lossReason;
         }
 
-        public SimulationResult SimulateGame(LevelData levelData, int deckSize, float favorableProbability = 0.51f, float finalFavorableProbability = 0.25f, float bombFavorableProbability = 0.33f)
+        public SimulationResult SimulateGame(LevelData levelData, int deckSize, float favorableProbability = 0.51f, float finalFavorableProbability = 0.25f, float bombFavorableProbability = 0.33f, int minimumCardsToIncreaseProbability = 2, int bombTimerToIncreaseProbability = 3)
         {
             _levelData = levelData;
             _gameOver = false;
@@ -164,6 +166,8 @@ namespace TripeaksSolitaire.Simulation
             _favorableProbability = favorableProbability;
             _finalFavorableProbability = finalFavorableProbability;
             _bombFavorableProbability = bombFavorableProbability;
+            _minimumCardsToIncreaseProbability = minimumCardsToIncreaseProbability;
+            _bombTimerToIncreaseProbability = bombTimerToIncreaseProbability;
 
             // Initialize board
             _boardCards = new List<SimCard>();

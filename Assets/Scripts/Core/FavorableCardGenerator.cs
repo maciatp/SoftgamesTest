@@ -25,18 +25,19 @@ namespace TripeaksSolitaire.Core
             float baseProbability,
             float finalStageBonusAmount,
             float urgentBombBonusAmount,
-            IGameState gameState)
+            IGameState gameState,
+            int minimumCardsToIncreaseProbability = 2)
         {
             float probability = baseProbability;
             
-            // BOOST 1: Low cards in draw pile (<= 2 cards)
+            // BOOST 1: Low cards in draw pile
             int cardsInDraw = gameState.GetDrawPileRemainingCards();
-            if (cardsInDraw <= 2)
+            if (cardsInDraw <= minimumCardsToIncreaseProbability)
             {
                 probability += finalStageBonusAmount;
             }
             
-            // BOOST 2: Urgent bomb on board (timer <= 2)
+            // BOOST 2: Urgent bomb on board
             var urgentBombs = gameState.GetUrgentBombValues();
             if (urgentBombs.Count > 0)
             {
