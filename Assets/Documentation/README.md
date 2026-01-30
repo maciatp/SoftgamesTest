@@ -31,4 +31,7 @@
 10. A copy of the level can be saved with the optimal deck resulting from the simulation. Click on “Create Optimized Level JSON”, and choose a location to save it.
 
 
+Created by Macià Torrens for SOFTGAMES - TECHNICAL GAME DESIGNER TEST 2026
+
+
 
