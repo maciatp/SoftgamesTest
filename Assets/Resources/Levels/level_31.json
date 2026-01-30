@@ -170,26 +170,26 @@
             "angle": 0,
             "sequence": 14,
             "faceUp": true,
-            "random": false,
+            "random": true, //previous: false
             "depth": 2,
             "y": 342,
             "x": 385,
             "type": "value",
-            "id": "card_15",
-            "value": 17
+            "id": "card_15"
+            //"value": 17
         },
         {
             "modifiers": [],
             "angle": 0,
             "sequence": 15,
             "faceUp": true,
-            "random": false,
+            "random": true, //previous: false
             "depth": 2,
             "y": 534,
             "x": 385,
             "type": "value",
-            "id": "card_16",
-            "value": 31
+            "id": "card_16"
+            //"value": 31
         },
         {
             "modifiers": [],
