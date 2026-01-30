@@ -224,11 +224,22 @@ namespace TripeaksSolitaire.Editor
 
                 EditorGUILayout.Space(10);
 
-                // Export button
+                // Export buttons
+                EditorGUILayout.BeginHorizontal();
+                
                 if (GUILayout.Button("Export Results to CSV", GUILayout.Height(30)))
                 {
                     ExportResultsToCSV();
                 }
+                
+                GUI.enabled = _optimalDeckResult != null;
+                if (GUILayout.Button("Create Optimized Level JSON", GUILayout.Height(30)))
+                {
+                    CreateOptimizedLevelJSON();
+                }
+                GUI.enabled = true;
+                
+                EditorGUILayout.EndHorizontal();
             }
         }
 
@@ -447,6 +458,72 @@ namespace TripeaksSolitaire.Editor
             }
 
             EditorUtility.DisplayDialog("Export Complete", $"Results exported to:\n{path}", "OK");
+        }
+
+        private void CreateOptimizedLevelJSON()
+        {
+            if (_optimalDeckResult == null || string.IsNullOrEmpty(_jsonFilePath))
+            {
+                EditorUtility.DisplayDialog("Error", "No optimal result available!", "OK");
+                return;
+            }
+
+            // Load the original level
+            LevelData originalLevel = LoadLevelFromFile(_jsonFilePath);
+            if (originalLevel == null)
+            {
+                EditorUtility.DisplayDialog("Error", "Failed to load original level!", "OK");
+                return;
+            }
+
+            int optimalDeckSize = _optimalDeckResult.optimalDeckSize;
+            int originalDeckSize = originalLevel.settings.cards_in_stack.Count;
+
+            // Create new cards_in_stack array with optimal size
+            List<int> newCardsInStack = new List<int>();
+            for (int i = 0; i < optimalDeckSize; i++)
+            {
+                newCardsInStack.Add(-1); // -1 means random card
+            }
+
+            // Update the level data
+            originalLevel.settings.cards_in_stack = newCardsInStack;
+
+            // Generate default filename
+            string originalFileName = Path.GetFileNameWithoutExtension(_jsonFilePath);
+            string defaultFileName = $"{originalFileName}_optimized_{optimalDeckSize}cards.json";
+
+            // Ask user where to save
+            string savePath = EditorUtility.SaveFilePanel(
+                "Save Optimized Level",
+                Path.GetDirectoryName(_jsonFilePath),
+                defaultFileName,
+                "json"
+            );
+
+            if (string.IsNullOrEmpty(savePath)) return;
+
+            // Serialize and save
+            try
+            {
+                string jsonContent = Newtonsoft.Json.JsonConvert.SerializeObject(originalLevel, Newtonsoft.Json.Formatting.Indented);
+                File.WriteAllText(savePath, jsonContent);
+
+                string message = $"Optimized level created!\n\n";
+                message += $"Original deck size: {originalDeckSize} cards\n";
+                message += $"Optimized deck size: {optimalDeckSize} cards\n";
+                message += $"Change: {optimalDeckSize - originalDeckSize:+0;-0} cards\n\n";
+                message += $"File saved to:\n{savePath}";
+
+                EditorUtility.DisplayDialog("Success", message, "OK");
+                
+                Debug.Log($"✅ Optimized level created: {Path.GetFileName(savePath)}");
+            }
+            catch (System.Exception e)
+            {
+                EditorUtility.DisplayDialog("Error", $"Failed to save level:\n{e.Message}", "OK");
+                Debug.LogError($"Error saving optimized level: {e.Message}");
+            }
         }
 
         private void DrawSeparator()
