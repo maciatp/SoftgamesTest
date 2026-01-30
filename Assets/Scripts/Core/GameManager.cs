@@ -44,6 +44,7 @@ public class GameManager : MonoBehaviour, FavorableCardGenerator.IGameState
 
     private float _currentFavorableProbability; // Cached current probability
     private bool _hadUrgentBomb = false; // Track if we had urgent bomb
+    private bool _hadFinalStageBoost = false; // Track if we had final stage boost
 
     [Header("Undo System")]
     public UnityEngine.UI.Button undoButton;
@@ -475,7 +476,6 @@ public class GameManager : MonoBehaviour, FavorableCardGenerator.IGameState
 
     private void PlayCard(Card card)
     {
-        Debug.Log($"Playing card {card.cardId} - {card.cardType}");
 
         // Handle special card types
         if (card.cardType == Card.CardType.Key)
@@ -521,8 +521,7 @@ public class GameManager : MonoBehaviour, FavorableCardGenerator.IGameState
         if (card == -1)
         {
             card = GenerateFavorableCardValue();
-            drawPile.deck[drawPile.currentIndex] = card;
-            Debug.Log($"🎲 Generated new card value: {card}");
+            drawPile.deck[drawPile.currentIndex] = card;           
         }
         else
         {
@@ -640,33 +639,54 @@ public class GameManager : MonoBehaviour, FavorableCardGenerator.IGameState
 
     /// <summary>
     /// Calculate current favorable probability based on game state
+    /// Only logs when boosts actually change
     /// </summary>
     private float CalculateDynamicFavorableProbability()
     {
         float probability = favorableProbability; // Start with base
         
-        // BOOST 1: Low cards in draw pile (<= 2 cards)
+        // BOOST 1: Low cards in draw pile
         int cardsInDraw = drawPile.RemainingCards();
-        if (cardsInDraw <= minimumCardsToIncreaseProbability)
+        bool hasFinalStageBoost = cardsInDraw <= minimumCardsToIncreaseProbability;
+        
+        if (hasFinalStageBoost)
         {
             probability += finalFavorableProbability;
-            Debug.Log($"🎯 Final stage boost: +{finalFavorableProbability:P0} (Draw pile: {cardsInDraw} cards)");
+            
+            // Only log when boost STARTS
+            if (!_hadFinalStageBoost)
+            {
+                _hadFinalStageBoost = true;
+                Debug.Log($"🎯 Final stage boost: +{finalFavorableProbability:P0} (Draw pile: {cardsInDraw} cards)");
+            }
+        }
+        else if (_hadFinalStageBoost)
+        {
+            // Boost ended (shouldn't happen normally, but handle it)
+            _hadFinalStageBoost = false;
         }
         
-        // BOOST 2: Urgent bomb on board (timer <= 2)
+        // BOOST 2: Urgent bomb on board
         var urgentBombs = _allBombs
             .Where(b => b.isOnBoard && b.isFaceUp && b.bombModifier != null && b.bombModifier.timer <= bombTimerToIncreaseProbability)
             .ToList();
         
-        if (urgentBombs.Count > 0)
+        bool hasUrgentBomb = urgentBombs.Count > 0;
+        
+        if (hasUrgentBomb)
         {
             probability += bombFavorableProbability;
-            _hadUrgentBomb = true;
-            Debug.Log($"💣 Urgent bomb boost: +{bombFavorableProbability:P0} (Bomb timer: {urgentBombs[0].bombModifier.timer})");
+            
+            // Only log when bomb boost STARTS
+            if (!_hadUrgentBomb)
+            {
+                _hadUrgentBomb = true;
+                Debug.Log($"💣 Urgent bomb boost: +{bombFavorableProbability:P0} (Bomb timer: {urgentBombs[0].bombModifier.timer})");
+            }
         }
         else if (_hadUrgentBomb)
         {
-            // Bomb was cleared, log return to normal
+            // Bomb was cleared
             _hadUrgentBomb = false;
             Debug.Log($"✅ Bomb cleared, probability returned to normal");
         }
@@ -677,7 +697,8 @@ public class GameManager : MonoBehaviour, FavorableCardGenerator.IGameState
         // Update visible slider in Inspector
         currentEffectiveProbability = probability;
         
-        if (probability != _currentFavorableProbability)
+        // Only log overall probability when it changes significantly
+        if (Mathf.Abs(probability - _currentFavorableProbability) > 0.01f)
         {
             _currentFavorableProbability = probability;
             Debug.Log($"📊 Current favorable probability: {probability:P1}");
@@ -776,6 +797,15 @@ public class GameManager : MonoBehaviour, FavorableCardGenerator.IGameState
         gameOver = true;
         isWin = win;
 
+        // Start coroutine to show UI after 1 second delay
+        StartCoroutine(ShowGameOverUIDelayed(win, reason));
+    }
+
+    private System.Collections.IEnumerator ShowGameOverUIDelayed(bool win, string reason)
+    {
+        // Wait 1 second before showing UI
+        yield return new WaitForSeconds(0.5f);
+
         int cardsOnBoard = board.allCards.Count(c => c.isOnBoard);
         int cardsInDraw = drawPile.RemainingCards();
         bool isCloseWin = win && cardsInDraw <= 2;
@@ -841,7 +871,6 @@ public class GameManager : MonoBehaviour, FavorableCardGenerator.IGameState
         }
         
         UpdateUndoButton();
-        Debug.Log($"💾 State saved ({_undoStack.Count} undos available)");
     }
 
     public void UndoLastMove()

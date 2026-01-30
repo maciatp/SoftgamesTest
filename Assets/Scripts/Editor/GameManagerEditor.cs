@@ -48,25 +48,39 @@ public class GameManagerEditor : Editor
             EditorGUILayout.LabelField("Boost Breakdown:", EditorStyles.miniBoldLabel);
             EditorGUILayout.LabelField($"  Base: {gameManager.favorableProbability:P0}");
             
-            // Calculate expected base
-            float baseProbability = gameManager.favorableProbability;
-            float totalExpected = baseProbability;
-            
-            // Check if Final Stage boost should be active
+            // Check if Final Stage boost is active
             int remainingCards = 999; // Default high value
             if (gameManager.drawPile != null && gameManager.drawPile.deck != null)
             {
                 remainingCards = gameManager.drawPile.deck.Count - gameManager.drawPile.currentIndex;
             }
             
-            if (remainingCards <= 2)
+            bool hasFinalStageBoost = remainingCards <= gameManager.minimumCardsToIncreaseProbability;
+            if (hasFinalStageBoost)
             {
                 EditorGUILayout.LabelField($"  + Final Stage: {gameManager.finalFavorableProbability:P0} 🎯 (Cards left: {remainingCards})", EditorStyles.boldLabel);
-                totalExpected += gameManager.finalFavorableProbability;
             }
             
-            // Check if Bomb boost should be active
-            if (gameManager.currentEffectiveProbability > totalExpected + 0.05f)
+            // Check if Bomb boost is active by checking if there are urgent bombs
+            bool hasUrgentBomb = false;
+            if (gameManager.board != null)
+            {
+                var allCards = gameManager.board.allCards;
+                if (allCards != null)
+                {
+                    foreach (var card in allCards)
+                    {
+                        if (card.isOnBoard && card.isFaceUp && card.hasBomb && 
+                            card.bombModifier != null && card.bombModifier.timer <= gameManager.bombTimerToIncreaseProbability)
+                        {
+                            hasUrgentBomb = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (hasUrgentBomb)
             {
                 EditorGUILayout.LabelField($"  + Urgent Bomb: {gameManager.bombFavorableProbability:P0} 💣", EditorStyles.boldLabel);
             }
