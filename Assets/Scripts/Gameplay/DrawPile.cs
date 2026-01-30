@@ -30,135 +30,19 @@ namespace TripeaksSolitaire.Gameplay
             // Initialize random number generator with truly unique seed
             _rng = new System.Random(System.Environment.TickCount + System.DateTime.Now.Millisecond * 1000 + GetInstanceID());
 
-            // Count how many random cards we need
-            int randomCardsNeeded = 0;
-            List<int> fixedCards = new List<int>();
-            
+            // All random cards will be -1 (deferred generation)
             foreach (int cardValue in levelData.settings.cards_in_stack)
             {
-                if (cardValue == -1)
-                {
-                    randomCardsNeeded++;
-                }
-                else
-                {
-                    fixedCards.Add(cardValue);
-                }
+                deck.Add(cardValue); // Keep -1 for random, specific values for fixed
             }
-
-            // Generate a balanced deck for random cards
-            List<int> randomCards = GenerateBalancedDeck(randomCardsNeeded);
-
-            // Rebuild the deck maintaining the original structure but with balanced random cards
-            int randomCardIndex = 0;
-            foreach (int cardValue in levelData.settings.cards_in_stack)
-            {
-                if (cardValue == -1)
-                {
-                    deck.Add(randomCards[randomCardIndex]);
-                    randomCardIndex++;
-                }
-                else
-                {
-                    deck.Add(cardValue);
-                }
-            }
-
-            // Final shuffle for good measure
-            ShuffleDeck();
 
             transform.position = pilePosition;
             UpdateVisual();
 
-            Debug.Log($"Draw pile initialized with {deck.Count} cards");
-            
-            // Debug: Show distribution
-            var distribution = new Dictionary<int, int>();
-            foreach (int card in deck)
-            {
-                if (!distribution.ContainsKey(card))
-                    distribution[card] = 0;
-                distribution[card]++;
-            }
-            
-            string distStr = "Card distribution: ";
-            for (int i = 1; i <= 13; i++)
-            {
-                if (distribution.ContainsKey(i))
-                    distStr += $"{GetCardString(i)}:{distribution[i]} ";
-            }
-            Debug.Log(distStr);
+            Debug.Log($"Draw pile initialized with {deck.Count} cards (deferred generation)");
         }
 
-        private List<int> GenerateBalancedDeck(int deckSize)
-        {
-            List<int> balancedDeck = new List<int>();
-
-            // Calculate how many complete sets of 13 cards we can fit
-            int completeSets = deckSize / 13;
-            int remainingCards = deckSize % 13;
-
-            // Add complete sets (1-13, 1-13, ...)
-            for (int set = 0; set < completeSets; set++)
-            {
-                for (int value = 1; value <= 13; value++)
-                {
-                    balancedDeck.Add(value);
-                }
-            }
-
-            // Add remaining cards randomly but without immediate repeats
-            if (remainingCards > 0)
-            {
-                List<int> availableValues = new List<int>();
-                for (int i = 1; i <= 13; i++)
-                {
-                    availableValues.Add(i);
-                }
-
-                // Shuffle available values
-                for (int i = availableValues.Count - 1; i > 0; i--)
-                {
-                    int j = _rng.Next(0, i + 1);
-                    int temp = availableValues[i];
-                    availableValues[i] = availableValues[j];
-                    availableValues[j] = temp;
-                }
-
-                // Take first N values
-                for (int i = 0; i < remainingCards; i++)
-                {
-                    balancedDeck.Add(availableValues[i]);
-                }
-            }
-
-            // Shuffle the balanced deck
-            for (int i = balancedDeck.Count - 1; i > 0; i--)
-            {
-                int j = _rng.Next(0, i + 1);
-                int temp = balancedDeck[i];
-                balancedDeck[i] = balancedDeck[j];
-                balancedDeck[j] = temp;
-            }
-
-            return balancedDeck;
-        }
-
-        private void ShuffleDeck()
-        {
-            // Fisher-Yates shuffle algorithm
-            int n = deck.Count;
-            for (int i = n - 1; i > 0; i--)
-            {
-                int j = _rng.Next(0, i + 1);
-                // Swap
-                int temp = deck[i];
-                deck[i] = deck[j];
-                deck[j] = temp;
-            }
-        }
-
-        public int DrawCard()
+        public int DrawCard(int currentPlayValue, List<int> targetValues, float favorableProbability = 0.51f)
         {
             if (IsEmpty())
             {
@@ -167,11 +51,53 @@ namespace TripeaksSolitaire.Gameplay
             }
 
             int card = deck[currentIndex];
+            
+            // If card is -1 (random), generate favorable value
+            if (card == -1)
+            {
+                card = GenerateFavorableValueSmart(targetValues, favorableProbability);
+                deck[currentIndex] = card; // Store generated value
+            }
+            
             currentIndex++;
             UpdateVisual();
 
             Debug.Log($"Drew card: {GetCardString(card)} ({RemainingCards()} cards left)");
             return card;
+        }
+        
+        private int GenerateFavorableValueSmart(List<int> targetValues, float favorableProbability)
+        {
+            // Configurable chance of favorable (adjacent to any target)
+            if (_rng.NextDouble() <= favorableProbability && targetValues.Count > 0)
+            {
+                // Generate value adjacent to ANY of the target values
+                List<int> adjacentValues = new List<int>();
+                
+                foreach (int targetValue in targetValues)
+                {
+                    int lowerValue = targetValue - 1;
+                    int higherValue = targetValue + 1;
+                    
+                    // Handle wrapping
+                    if (lowerValue < 1) lowerValue = 13;
+                    if (higherValue > 13) higherValue = 1;
+                    
+                    if (!adjacentValues.Contains(lowerValue))
+                        adjacentValues.Add(lowerValue);
+                    if (!adjacentValues.Contains(higherValue))
+                        adjacentValues.Add(higherValue);
+                }
+                
+                // Pick random adjacent value
+                if (adjacentValues.Count > 0)
+                {
+                    return adjacentValues[_rng.Next(adjacentValues.Count)];
+                }
+            }
+            
+            // Random value
+            return _rng.Next(1, 14);
         }
 
         public bool IsEmpty()
@@ -189,7 +115,7 @@ namespace TripeaksSolitaire.Gameplay
             return RemainingCards() <= 2;
         }
 
-        private void UpdateVisual()
+        public void UpdateVisual()
         {
             if (pileSprite != null)
             {

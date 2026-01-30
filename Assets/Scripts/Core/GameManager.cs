@@ -20,6 +20,18 @@ public class GameManager : MonoBehaviour
     public bool gameOver = false;
     public bool isWin = false;
 
+    [Header("Favorable Randomness")]
+    [Range(0f, 1f)]
+    [Tooltip("Probability of generating favorable (adjacent) cards. 0.51 = 51% favorable, 0.5 = completely random")]
+    public float favorableProbability = 0.51f;
+
+    [Header("Undo System")]
+    public UnityEngine.UI.Button undoButton;
+    public UnityEngine.UI.Text undoCountText; // Optional: shows undo count
+    public int maxUndoSteps = 999; // Unlimited by default
+
+    private Stack<GameState> _undoStack = new Stack<GameState>();
+
     private LevelData _currentLevel;
     private List<Card> _allBombs = new List<Card>();
     private TripeaksGameLogic _gameLogic = new TripeaksGameLogic();
@@ -27,6 +39,30 @@ public class GameManager : MonoBehaviour
     void Start()
     {
         LoadAndStartLevel();
+        UpdateUndoButton();
+    }
+
+    void Update()
+    {
+        // Press Z to undo
+        if (Input.GetKeyDown(KeyCode.Z) && _undoStack.Count > 0)
+        {
+            UndoLastMove();
+        }
+
+        // Press R to restart level
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            Debug.Log("Restarting level...");
+            LoadAndStartLevel();
+        }
+
+        // Press L to reload level (useful after changing JSON file)
+        if (Input.GetKeyDown(KeyCode.L))
+        {
+            Debug.Log("Reloading level...");
+            LoadAndStartLevel();
+        }
     }
 
     public void LoadAndStartLevel()
@@ -309,6 +345,10 @@ public class GameManager : MonoBehaviour
         moveCount = 0;
         gameOver = false;
         isWin = false;
+        
+        // Clear undo stack
+        _undoStack.Clear();
+        UpdateUndoButton();
 
         // Initialize components
         board.LoadLevel(levelData);
@@ -331,8 +371,17 @@ public class GameManager : MonoBehaviour
     {
         if (!drawPile.IsEmpty())
         {
-            int card = drawPile.DrawCard();
+            // Get initial card from draw pile
+            int card = drawPile.deck[0];
+            if (card == -1)
+            {
+                // Generate using smart favorable logic
+                card = GenerateFavorableCardValue();
+                drawPile.deck[0] = card;
+            }
+            drawPile.currentIndex = 1;
             playPile.SetCard(card);
+            drawPile.UpdateVisual();
         }
     }
 
@@ -355,6 +404,8 @@ public class GameManager : MonoBehaviour
         // Check if card can be played on current play pile card
         if (playPile.CanAcceptCard(card))
         {
+            // Save state before playing
+            SaveCurrentState();
             PlayCard(card);
         }
         else
@@ -406,10 +457,22 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        int newCard = drawPile.DrawCard();
-        playPile.SetCard(newCard);
+        // Save state before drawing
+        SaveCurrentState();
 
-        Debug.Log($"Drew new card from pile: {newCard}");
+        // Draw new card using smart favorable logic
+        int card = drawPile.deck[drawPile.currentIndex];
+        if (card == -1)
+        {
+            card = GenerateFavorableCardValue();
+            drawPile.deck[drawPile.currentIndex] = card;
+        }
+        drawPile.currentIndex++;
+        drawPile.UpdateVisual();
+        
+        playPile.SetCard(card);
+
+        Debug.Log($"Drew new card from pile: {card}");
 
         // Increment move counter (drawing also counts as a move)
         IncrementMove();
@@ -509,6 +572,88 @@ public class GameManager : MonoBehaviour
         );
     }
 
+    /// <summary>
+    /// Generate a favorable card value considering current game state
+    /// Priority: 1. Adjacent to bombs, 2. Adjacent to playable cards, 3. Adjacent to play pile
+    /// </summary>
+    public int GenerateFavorableCardValue()
+    {
+        System.Random rng = new System.Random(System.DateTime.Now.Millisecond + UnityEngine.Random.Range(0, 10000));
+        
+        // Check if we should generate favorable
+        if (rng.NextDouble() > favorableProbability)
+        {
+            // Random generation
+            return rng.Next(1, 14);
+        }
+
+        List<int> favorableValues = new List<int>();
+
+        // PRIORITY 1: Adjacent to visible bombs with low timers
+        var urgentBombs = _allBombs
+            .Where(b => b.isOnBoard && b.isFaceUp && b.bombModifier != null && b.bombModifier.timer <= 3 && b.value != -1)
+            .OrderBy(b => b.bombModifier.timer)
+            .ToList();
+
+        if (urgentBombs.Count > 0)
+        {
+            // Generate value ADJACENT to bomb (so it can be played!)
+            foreach (var bomb in urgentBombs)
+            {
+                int bombValue = bomb.value;
+                int lowerValue = bombValue - 1;
+                int higherValue = bombValue + 1;
+                
+                if (lowerValue < 1) lowerValue = 13;
+                if (higherValue > 13) higherValue = 1;
+                
+                if (!favorableValues.Contains(lowerValue)) favorableValues.Add(lowerValue);
+                if (!favorableValues.Contains(higherValue)) favorableValues.Add(higherValue);
+            }
+        }
+
+        // PRIORITY 2: Adjacent to playable cards on board
+        var playableCards = board.GetPlayableCards()
+            .Where(c => c.value != -1 && c.cardType == Card.CardType.Value)
+            .ToList();
+
+        if (playableCards.Count > 0)
+        {
+            foreach (var card in playableCards)
+            {
+                int cardValue = card.value;
+                int lowerValue = cardValue - 1;
+                int higherValue = cardValue + 1;
+                
+                if (lowerValue < 1) lowerValue = 13;
+                if (higherValue > 13) higherValue = 1;
+                
+                if (!favorableValues.Contains(lowerValue)) favorableValues.Add(lowerValue);
+                if (!favorableValues.Contains(higherValue)) favorableValues.Add(higherValue);
+            }
+        }
+
+        // PRIORITY 3: Adjacent to current play pile
+        int currentValue = playPile.currentValue;
+        int lower = currentValue - 1;
+        int higher = currentValue + 1;
+        
+        if (lower < 1) lower = 13;
+        if (higher > 13) higher = 1;
+        
+        if (!favorableValues.Contains(lower)) favorableValues.Add(lower);
+        if (!favorableValues.Contains(higher)) favorableValues.Add(higher);
+        
+        // Pick random favorable value
+        if (favorableValues.Count > 0)
+        {
+            return favorableValues[rng.Next(favorableValues.Count)];
+        }
+        
+        // Fallback to random
+        return rng.Next(1, 14);
+    }
+
     private void GameOver(bool win, string reason)
     {
         gameOver = true;
@@ -549,20 +694,57 @@ public class GameManager : MonoBehaviour
         Debug.Log(message);
     }
 
-    void Update()
+    private void SaveCurrentState()
     {
-        // Press R to restart level
-        if (Input.GetKeyDown(KeyCode.R))
+        GameState state = new GameState(playPile, drawPile, board, moveCount);
+        _undoStack.Push(state);
+        
+        // Limit stack size if needed
+        if (_undoStack.Count > maxUndoSteps)
         {
-            Debug.Log("Restarting level...");
-            LoadAndStartLevel();
+            // Remove oldest state (bottom of stack)
+            var tempList = _undoStack.ToList();
+            tempList.RemoveAt(tempList.Count - 1);
+            _undoStack = new Stack<GameState>(tempList.Reverse<GameState>());
+        }
+        
+        UpdateUndoButton();
+        Debug.Log($"💾 State saved ({_undoStack.Count} undos available)");
+    }
+
+    public void UndoLastMove()
+    {
+        if (_undoStack.Count == 0)
+        {
+            Debug.Log("⚠️ No moves to undo");
+            return;
         }
 
-        // Press L to reload level (useful after changing JSON file)
-        if (Input.GetKeyDown(KeyCode.L))
+        Debug.Log($"↩️ Undoing move... ({_undoStack.Count - 1} undos remaining)");
+        
+        // Pop and restore state
+        GameState previousState = _undoStack.Pop();
+        previousState.RestoreState(playPile, drawPile, board, moveCount);
+        
+        // Restore move count
+        moveCount = previousState.GetMoveCount();
+        
+        UpdateUndoButton();
+        Debug.Log($"✅ Move undone! ({_undoStack.Count} undos available)");
+    }
+
+    private void UpdateUndoButton()
+    {
+        bool canUndo = _undoStack.Count > 0;
+        
+        if (undoButton != null)
         {
-            Debug.Log("Reloading level...");
-            LoadAndStartLevel();
+            undoButton.interactable = canUndo;
+        }
+        
+        if (undoCountText != null)
+        {
+            undoCountText.text = _undoStack.Count > 0 ? $"Undo ({_undoStack.Count})" : "Undo";
         }
     }
 }

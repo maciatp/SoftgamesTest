@@ -22,6 +22,7 @@ namespace TripeaksSolitaire.Editor
         private int _maxDeckSize = 50;
         private int _simulationsPerSize = 500;
         private float _targetCloseWinRate = 0.7f;
+        private float _favorableProbability = 0.51f;
 
         // Results
         private List<DifficultyTuner.TuningResult> _results;
@@ -70,6 +71,7 @@ namespace TripeaksSolitaire.Editor
             _maxDeckSize = EditorGUILayout.IntSlider("Max Deck Size", _maxDeckSize, _minDeckSize, 100);
             _simulationsPerSize = EditorGUILayout.IntSlider("Simulations Per Size", _simulationsPerSize, 500, 5000);
             _targetCloseWinRate = EditorGUILayout.Slider("Target Close Win %", _targetCloseWinRate, 0.5f, 0.9f);
+            _favorableProbability = EditorGUILayout.Slider("Favorable Probability", _favorableProbability, 0f, 1f);
 
             EditorGUILayout.Space(5);
             EditorGUILayout.HelpBox(
@@ -239,7 +241,7 @@ namespace TripeaksSolitaire.Editor
                 _simulationProgress = (float)currentIndex / totalDeckSizes;
                 Repaint();
 
-                var result = RunSimulationsForDeckSize(levelData, deckSize, _simulationsPerSize);
+                var result = RunSimulationsForDeckSize(levelData, deckSize, _simulationsPerSize, _favorableProbability);
                 _results.Add(result);
 
                 // Allow UI to update
@@ -292,7 +294,7 @@ namespace TripeaksSolitaire.Editor
             }
         }
 
-        private DifficultyTuner.TuningResult RunSimulationsForDeckSize(LevelData levelData, int deckSize, int simulations)
+        private DifficultyTuner.TuningResult RunSimulationsForDeckSize(LevelData levelData, int deckSize, int simulations, float favorableProbability)
         {
             GameSimulator simulator = new GameSimulator();
 
@@ -303,7 +305,7 @@ namespace TripeaksSolitaire.Editor
 
             for (int i = 0; i < simulations; i++)
             {
-                var result = simulator.SimulateGame(levelData, deckSize);
+                var result = simulator.SimulateGame(levelData, deckSize, favorableProbability);
 
                 if (result.isWin)
                 {
@@ -343,6 +345,14 @@ namespace TripeaksSolitaire.Editor
 
             using (StreamWriter writer = new StreamWriter(path))
             {
+                // Metadata header
+                writer.WriteLine($"# Simulation Metadata");
+                writer.WriteLine($"# Favorable Probability: {_favorableProbability:F2}");
+                writer.WriteLine($"# Target Close Win Rate: {_targetCloseWinRate:P0}");
+                writer.WriteLine($"# Simulations Per Size: {_simulationsPerSize}");
+                writer.WriteLine($"# Export Date: {System.DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                writer.WriteLine();
+                
                 // Header
                 writer.WriteLine("DeckSize,TotalGames,Wins,CloseWins,WinRate,CloseWinRate,AvgMovesOnWin,AvgCardsRemainingOnWin,MeetsTarget");
 

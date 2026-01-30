@@ -15,6 +15,38 @@ namespace TripeaksSolitaire.Core
         private const float ZAP_ROW_THRESHOLD = 30f;
 
         /// <summary>
+        /// Get optimal target values for favorable card generation based on playable cards and current play value
+        /// </summary>
+        public List<int> GetOptimalTargetValues<T>(List<T> playableCards, int currentPlayValue,
+                                                   System.Func<T, int> getValue, System.Func<T, bool> hasBomb,
+                                                   System.Func<T, bool> isKey, System.Func<T, bool> isZap) where T : class
+        {
+            List<int> targetValues = new List<int>();
+            
+            // Priority 1: Bomb cards (most urgent!)
+            var bombCards = playableCards.Where(c => hasBomb(c) && getValue(c) != -1).ToList();
+            if (bombCards.Count > 0)
+            {
+                foreach (var bomb in bombCards)
+                {
+                    targetValues.Add(getValue(bomb));
+                }
+            }
+            
+            // Priority 2: Other playable value cards
+            var valueCards = playableCards.Where(c => !hasBomb(c) && !isKey(c) && !isZap(c) && getValue(c) != -1).ToList();
+            foreach (var card in valueCards)
+            {
+                targetValues.Add(getValue(card));
+            }
+            
+            // Priority 3: Current play value (fallback)
+            targetValues.Add(currentPlayValue);
+            
+            return targetValues;
+        }
+
+        /// <summary>
         /// Check if a card can be played on the current play card value
         /// </summary>
         public bool CanPlayCard(int cardValue, bool isKey, bool isZap, bool hasLock, int currentPlayValue)

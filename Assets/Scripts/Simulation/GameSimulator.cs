@@ -16,6 +16,7 @@ namespace TripeaksSolitaire.Simulation
         private bool _gameOver;
         private bool _isWin;
         private TripeaksGameLogic _gameLogic = new TripeaksGameLogic();
+        private float _favorableProbability = 0.51f;
 
         // Simplified card for simulation (no MonoBehaviour)
         public class SimCard
@@ -40,13 +41,21 @@ namespace TripeaksSolitaire.Simulation
                 position = new Vector2(data.x, data.y);
                 isFaceUp = data.faceUp;
 
-                // Set value using System.Random for better randomness
+                // Set value (defer if random for favorable generation)
                 if (data.type == "value")
                 {
                     if (data.random)
                     {
-                        System.Random rng = new System.Random(System.Guid.NewGuid().GetHashCode());
-                        value = rng.Next(1, 14);
+                        // If face up, generate value immediately; otherwise defer
+                        if (data.faceUp)
+                        {
+                            System.Random rng = new System.Random(System.Guid.NewGuid().GetHashCode());
+                            value = rng.Next(1, 14);
+                        }
+                        else
+                        {
+                            value = -1; // Deferred generation
+                        }
                     }
                     else
                     {
@@ -85,13 +94,14 @@ namespace TripeaksSolitaire.Simulation
             public string lossReason;
         }
 
-        public SimulationResult SimulateGame(LevelData levelData, int deckSize)
+        public SimulationResult SimulateGame(LevelData levelData, int deckSize, float favorableProbability = 0.51f)
         {
             _levelData = levelData;
             _gameOver = false;
             _isWin = false;
             _moveCount = 0;
             _drawPileIndex = 0;
+            _favorableProbability = favorableProbability;
 
             // Initialize board
             _boardCards = new List<SimCard>();
@@ -100,13 +110,18 @@ namespace TripeaksSolitaire.Simulation
                 _boardCards.Add(new SimCard(cardData));
             }
 
-            // Initialize draw pile with BALANCED deck
-            _drawPile = GenerateBalancedDeck(deckSize);
+            // Initialize draw pile with deferred generation (all -1)
+            _drawPile = new List<int>();
+            for (int i = 0; i < deckSize; i++)
+            {
+                _drawPile.Add(-1); // Will be generated on demand
+            }
 
             // Draw initial card
             if (_drawPile.Count > 0)
             {
-                _currentPlayCard = _drawPile[_drawPileIndex];
+                _currentPlayCard = GenerateFavorableCardValue();
+                _drawPile[_drawPileIndex] = _currentPlayCard;
                 _drawPileIndex++;
             }
 
@@ -132,59 +147,76 @@ namespace TripeaksSolitaire.Simulation
             };
         }
 
-        private List<int> GenerateBalancedDeck(int deckSize)
+        /// <summary>
+        /// Generate favorable card value with smart priority system
+        /// Priority: 1. Adjacent to bombs, 2. Adjacent to playable cards, 3. Adjacent to play pile
+        /// </summary>
+        private int GenerateFavorableCardValue()
         {
-            List<int> balancedDeck = new List<int>();
             System.Random rng = new System.Random(System.Guid.NewGuid().GetHashCode());
-
-            // Calculate complete sets
-            int completeSets = deckSize / 13;
-            int remainingCards = deckSize % 13;
-
-            // Add complete sets (1-13)
-            for (int set = 0; set < completeSets; set++)
+            
+            // Check if we should generate favorable
+            if (rng.NextDouble() > _favorableProbability)
             {
-                for (int value = 1; value <= 13; value++)
-                {
-                    balancedDeck.Add(value);
-                }
+                return rng.Next(1, 14);
             }
 
-            // Add remaining cards
-            if (remainingCards > 0)
+            List<int> favorableValues = new List<int>();
+
+            // PRIORITY 1: Adjacent to visible bombs with low timers
+            var urgentBombs = _boardCards
+                .Where(b => b.isOnBoard && b.isFaceUp && b.hasBomb && b.bombTimer <= 3 && b.value != -1)
+                .OrderBy(b => b.bombTimer)
+                .ToList();
+
+            foreach (var bomb in urgentBombs)
             {
-                List<int> availableValues = new List<int>();
-                for (int i = 1; i <= 13; i++)
-                {
-                    availableValues.Add(i);
-                }
-
-                // Shuffle available values
-                for (int i = availableValues.Count - 1; i > 0; i--)
-                {
-                    int j = rng.Next(0, i + 1);
-                    int temp = availableValues[i];
-                    availableValues[i] = availableValues[j];
-                    availableValues[j] = temp;
-                }
-
-                // Take first N values
-                for (int i = 0; i < remainingCards; i++)
-                {
-                    balancedDeck.Add(availableValues[i]);
-                }
+                int bombValue = bomb.value;
+                int lowerValue = bombValue - 1;
+                int higherValue = bombValue + 1;
+                
+                if (lowerValue < 1) lowerValue = 13;
+                if (higherValue > 13) higherValue = 1;
+                
+                if (!favorableValues.Contains(lowerValue)) favorableValues.Add(lowerValue);
+                if (!favorableValues.Contains(higherValue)) favorableValues.Add(higherValue);
             }
 
-            // Shuffle the balanced deck
-            for (int i = balancedDeck.Count - 1; i > 0; i--)
+            // PRIORITY 2: Adjacent to playable cards on board
+            var playableCards = GetPlayableCards()
+                .Where(c => c.value != -1 && !c.isKey && !c.isZap && !c.hasLock)
+                .ToList();
+
+            foreach (var card in playableCards)
             {
-                int j = rng.Next(0, i + 1);
-                int temp = balancedDeck[i];
-                balancedDeck[i] = balancedDeck[j];
-                balancedDeck[j] = temp;
+                int cardValue = card.value;
+                int lowerValue = cardValue - 1;
+                int higherValue = cardValue + 1;
+                
+                if (lowerValue < 1) lowerValue = 13;
+                if (higherValue > 13) higherValue = 1;
+                
+                if (!favorableValues.Contains(lowerValue)) favorableValues.Add(lowerValue);
+                if (!favorableValues.Contains(higherValue)) favorableValues.Add(higherValue);
             }
 
-            return balancedDeck;
+            // PRIORITY 3: Adjacent to current play pile
+            int lower = _currentPlayCard - 1;
+            int higher = _currentPlayCard + 1;
+            
+            if (lower < 1) lower = 13;
+            if (higher > 13) higher = 1;
+            
+            if (!favorableValues.Contains(lower)) favorableValues.Add(lower);
+            if (!favorableValues.Contains(higher)) favorableValues.Add(higher);
+            
+            // Pick random favorable value
+            if (favorableValues.Count > 0)
+            {
+                return favorableValues[rng.Next(favorableValues.Count)];
+            }
+            
+            return rng.Next(1, 14);
         }
 
         private void PlayTurn()
@@ -204,7 +236,14 @@ namespace TripeaksSolitaire.Simulation
                 // No valid cards - must draw from pile
                 if (_drawPileIndex < _drawPile.Count)
                 {
-                    _currentPlayCard = _drawPile[_drawPileIndex];
+                    int card = _drawPile[_drawPileIndex];
+                    // Generate favorable value if not assigned
+                    if (card == -1)
+                    {
+                        card = GenerateFavorableCardValue();
+                        _drawPile[_drawPileIndex] = card;
+                    }
+                    _currentPlayCard = card;
                     _drawPileIndex++;
                     IncrementMove();
                 }
@@ -356,18 +395,21 @@ namespace TripeaksSolitaire.Simulation
 
         private void RevealUncoveredCards()
         {
-            // Check all face-down cards and reveal them if they're no longer covered
-            foreach (var card in _boardCards)
-            {
-                if (!card.isOnBoard) continue;
-                if (card.isFaceUp) continue; // Skip already face-up cards
-
-                // If card is not covered, reveal it
-                if (!IsCovered(card))
-                {
-                    card.isFaceUp = true;
-                }
-            }
+            _gameLogic.RevealUncoveredCards(
+                _boardCards,
+                c => c.isOnBoard,
+                c => c.isFaceUp,
+                c => {
+                    c.isFaceUp = true;
+                    // Generate favorable value if not assigned
+                    if (c.value == -1)
+                    {
+                        c.value = GenerateFavorableCardValue();
+                    }
+                },
+                c => c.depth,
+                c => c.position
+            );
         }
 
         private void IncrementMove()

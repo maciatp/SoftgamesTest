@@ -78,9 +78,18 @@ public class Card : MonoBehaviour
         {
             if (data.random)
             {
-                // Use System.Random with unique seed for better randomness
-                System.Random rng = new System.Random(System.DateTime.Now.Millisecond + GetInstanceID() + (int)(data.x * 1000 + data.y));
-                value = rng.Next(1, 14); // 1-13
+                // If face up, generate value immediately; otherwise defer
+                if (data.faceUp)
+                {
+                    // Generate value immediately for face-up cards
+                    System.Random rng = new System.Random(System.DateTime.Now.Millisecond + GetInstanceID() + (int)(data.x * 1000 + data.y));
+                    value = rng.Next(1, 14);
+                }
+                else
+                {
+                    // Defer value generation until card is revealed (favorable randomness)
+                    value = -1; // -1 means not yet assigned
+                }
             }
             else
             {
@@ -205,6 +214,95 @@ public class Card : MonoBehaviour
         {
             lockIcon.SetActive(hasLock);
         }
+    }
+
+    /// <summary>
+    /// Generate card value with configurable probability, considering multiple target values
+    /// </summary>
+    public void GenerateFavorableValueSmart(List<int> targetValues, float favorableProbability = 0.51f)
+    {
+        // Only generate if not already assigned
+        if (value != -1) return;
+
+        System.Random rng = new System.Random(System.DateTime.Now.Millisecond + GetInstanceID());
+        
+        // Configurable chance of favorable (adjacent to any target)
+        if (rng.NextDouble() <= favorableProbability && targetValues.Count > 0)
+        {
+            // Generate value adjacent to ANY of the target values
+            List<int> adjacentValues = new List<int>();
+            
+            foreach (int targetValue in targetValues)
+            {
+                int lowerValue = targetValue - 1;
+                int higherValue = targetValue + 1;
+                
+                // Handle wrapping
+                if (lowerValue < 1) lowerValue = 13;
+                if (higherValue > 13) higherValue = 1;
+                
+                if (!adjacentValues.Contains(lowerValue))
+                    adjacentValues.Add(lowerValue);
+                if (!adjacentValues.Contains(higherValue))
+                    adjacentValues.Add(higherValue);
+            }
+            
+            // Pick random adjacent value
+            if (adjacentValues.Count > 0)
+            {
+                value = adjacentValues[rng.Next(adjacentValues.Count)];
+            }
+            else
+            {
+                value = rng.Next(1, 14);
+            }
+        }
+        else
+        {
+            // Random value
+            value = rng.Next(1, 14);
+        }
+        
+        UpdateVisual();
+    }
+
+    /// <summary>
+    /// Generate card value with configurable probability of being favorable (adjacent to target)
+    /// </summary>
+    public void GenerateFavorableValue(int targetValue, float favorableProbability = 0.51f)
+    {
+        // Only generate if not already assigned
+        if (value != -1) return;
+
+        System.Random rng = new System.Random(System.DateTime.Now.Millisecond + GetInstanceID());
+        
+        // Configurable chance of favorable (adjacent card)
+        if (rng.NextDouble() <= favorableProbability)
+        {
+            // Generate adjacent value
+            List<int> adjacentValues = new List<int>();
+            
+            // Add adjacent values
+            int lowerValue = targetValue - 1;
+            int higherValue = targetValue + 1;
+            
+            // Handle wrapping
+            if (lowerValue < 1) lowerValue = 13; // Ace wraps to King
+            if (higherValue > 13) higherValue = 1; // King wraps to Ace
+            
+            adjacentValues.Add(lowerValue);
+            adjacentValues.Add(higherValue);
+            
+            // Pick random adjacent value
+            value = adjacentValues[rng.Next(adjacentValues.Count)];
+        }
+        else
+        {
+            // Random value
+            value = rng.Next(1, 14);
+        }
+        
+        UpdateVisual();
     }
 
     private string GetCardValueString()

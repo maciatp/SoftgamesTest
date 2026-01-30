@@ -145,11 +145,23 @@ namespace TripeaksSolitaire.Gameplay
 
         private void RevealUncoveredCards()
         {
+            // Get GameManager reference
+            GameManager gm = FindFirstObjectByType<GameManager>();
+            if (gm == null) return;
+            
             _gameLogic.RevealUncoveredCards(
                 allCards,
                 c => c.isOnBoard,
                 c => c.isFaceUp,
-                c => { c.isFaceUp = true; c.UpdateVisual(); },
+                c => { 
+                    c.isFaceUp = true;
+                    // Generate favorable value if not assigned using GameManager's smart logic
+                    if (c.value == -1)
+                    {
+                        c.value = gm.GenerateFavorableCardValue();
+                    }
+                    c.UpdateVisual();
+                },
                 c => c.depth,
                 c => c.boardPosition
             );

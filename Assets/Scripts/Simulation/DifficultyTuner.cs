@@ -20,7 +20,7 @@ namespace TripeaksSolitaire.Simulation
             public bool meetsTarget; // Does this meet the 70% close win target?
         }
         
-        public List<TuningResult> RunTuningSimulations(LevelData levelData, int minDeckSize = 10, int maxDeckSize = 50, int simulationsPerSize = 100, float targetCloseWinRate = 0.7f)
+        public List<TuningResult> RunTuningSimulations(LevelData levelData, int minDeckSize = 10, int maxDeckSize = 50, int simulationsPerSize = 100, float targetCloseWinRate = 0.7f, float favorableProbability = 0.51f)
         {
             List<TuningResult> results = new List<TuningResult>();
             
@@ -28,12 +28,13 @@ namespace TripeaksSolitaire.Simulation
             Debug.Log($"Level: {levelData.settings.level_number}");
             Debug.Log($"Testing deck sizes: {minDeckSize} to {maxDeckSize}");
             Debug.Log($"Simulations per size: {simulationsPerSize}");
+            Debug.Log($"Favorable Probability: {favorableProbability:P1}");
             Debug.Log($"TARGET: {targetCloseWinRate:P0} of wins must have ≤2 cards remaining");
             Debug.Log($"GOAL: Find SMALLEST deck size that meets this target\n");
             
             for (int deckSize = minDeckSize; deckSize <= maxDeckSize; deckSize++)
             {
-                TuningResult result = RunSimulationsForDeckSize(levelData, deckSize, simulationsPerSize, targetCloseWinRate);
+                TuningResult result = RunSimulationsForDeckSize(levelData, deckSize, simulationsPerSize, targetCloseWinRate, favorableProbability);
                 results.Add(result);
                 
                 string status = result.meetsTarget ? "✅" : "  ";
@@ -46,7 +47,7 @@ namespace TripeaksSolitaire.Simulation
             return results;
         }
         
-        private TuningResult RunSimulationsForDeckSize(LevelData levelData, int deckSize, int simulations, float targetCloseWinRate)
+        private TuningResult RunSimulationsForDeckSize(LevelData levelData, int deckSize, int simulations, float targetCloseWinRate, float favorableProbability)
         {
             GameSimulator simulator = new GameSimulator();
             
@@ -57,7 +58,7 @@ namespace TripeaksSolitaire.Simulation
             
             for (int i = 0; i < simulations; i++)
             {
-                var result = simulator.SimulateGame(levelData, deckSize);
+                var result = simulator.SimulateGame(levelData, deckSize, favorableProbability);
                 
                 if (result.isWin)
                 {
