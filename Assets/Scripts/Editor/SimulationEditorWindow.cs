@@ -177,15 +177,15 @@ namespace TripeaksSolitaire.Editor
 
                     if (isOptimal)
                     {
-                        GUI.backgroundColor = new Color(0.0f, 1.0f, 0.85f); // Bright green for optimal
+                        GUI.backgroundColor = new Color(0f, 0.86f, 1f); // Cyan bright for optimal
                     }
                     else if (isInRange)
                     {
-                        GUI.backgroundColor = new Color(0.6f, 0.9f, 0.6f); // Light green for range
+                        GUI.backgroundColor = new Color(0.5f, 0.85f, 0.5f); // Light green for range
                     }
                     else if (result.meetsTarget)
                     {
-                        GUI.backgroundColor = new Color(0.8f, 1f, 0.8f); // Very light green
+                        GUI.backgroundColor = new Color(0.75f, 0.95f, 0.75f); // Pale green for others meeting target
                     }
 
                     EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
@@ -195,7 +195,14 @@ namespace TripeaksSolitaire.Editor
                     EditorGUILayout.LabelField($"{result.winRate:P1}", GUILayout.Width(60));
                     EditorGUILayout.LabelField($"{result.closeWinRate:P1}", GUILayout.Width(90));
                     EditorGUILayout.LabelField(result.meetsTarget ? "✅" : "❌", GUILayout.Width(90));
-                    EditorGUILayout.LabelField($"{result.avgCardsRemainingOnWin:F2}", GUILayout.Width(80));
+                    
+                    // Avg Cards with optional OPTIMAL indicator at the end
+                    string avgCardsLabel = $"{result.avgCardsRemainingOnWin:F2}";
+                    if (isOptimal)
+                    {
+                        avgCardsLabel += " ★ OPTIMAL";
+                    }
+                    EditorGUILayout.LabelField(avgCardsLabel, GUILayout.Width(120));
 
                     EditorGUILayout.EndHorizontal();
 
