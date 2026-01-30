@@ -28,7 +28,7 @@ namespace TripeaksSolitaire.Editor
 
         // Results
         private List<DifficultyTuner.TuningResult> _results;
-        private int _optimalDeckSize;
+        private DifficultyTuner.OptimalDeckResult _optimalDeckResult;
         private bool _isSimulating = false;
         private float _simulationProgress = 0f;
         private string _currentStatus = "Ready";
@@ -85,7 +85,7 @@ namespace TripeaksSolitaire.Editor
                 $"Will test {_maxDeckSize - _minDeckSize + 1} deck sizes with {_simulationsPerSize} simulations each.\n" +
                 $"Total simulations: {(_maxDeckSize - _minDeckSize + 1) * _simulationsPerSize}\n" +
                 $"Target: {_targetCloseWinRate:P0} of wins must have ≤2 cards remaining\n" +
-                $"Goal: Find SMALLEST deck size that meets this target",
+                $"Goal: Find range of deck sizes that meets this target",
                 MessageType.Info);
 
             EditorGUILayout.Space(5);
@@ -123,24 +123,29 @@ namespace TripeaksSolitaire.Editor
                 EditorGUILayout.Space(5);
                 EditorGUILayout.LabelField("4. Results", EditorStyles.boldLabel);
 
-                // Optimal result box
-                var optimalResult = _results.Find(r => r.deckSize == _optimalDeckSize);
-                if (optimalResult != null)
+                // Optimal range result box (only show when simulation is complete)
+                if (_optimalDeckResult != null)
                 {
-                    string statusIcon = optimalResult.meetsTarget ? "✅" : "⚠️";
-                    MessageType msgType = optimalResult.meetsTarget ? MessageType.None : MessageType.Warning;
-                    
-                    EditorGUILayout.HelpBox(
-                        $"{statusIcon} RECOMMENDED DECK SIZE: {_optimalDeckSize} cards\n\n" +
-                        $"Win Rate: {optimalResult.winRate:P2} ({optimalResult.wins}/{optimalResult.totalGames} games)\n" +
-                        $"Close Win Rate: {optimalResult.closeWinRate:P2} (target: ≥{_targetCloseWinRate:P0})\n" +
-                        $"Meets Target: {(optimalResult.meetsTarget ? "YES ✅" : "NO - Consider adjusting settings")}\n" +
-                        $"Avg Moves on Win: {optimalResult.avgMovesOnWin:F1}\n" +
-                        $"Avg Cards Remaining: {optimalResult.avgCardsRemainingOnWin:F2}",
-                        msgType);
-                }
+                    var optimalResult = _optimalDeckResult.optimalResult;
+                    if (optimalResult != null)
+                    {
+                        string statusIcon = optimalResult.meetsTarget ? "✅" : "⚠️";
+                        MessageType msgType = optimalResult.meetsTarget ? MessageType.None : MessageType.Warning;
+                        
+                        EditorGUILayout.HelpBox(
+                            $"{statusIcon} OPTIMAL DECK RANGE: {_optimalDeckResult.minDeckSize} to {_optimalDeckResult.maxDeckSize} cards\n" +
+                            $"Qualifying deck sizes: {string.Join(", ", _optimalDeckResult.qualifyingDeckSizes)}\n\n" +
+                            $"🎯 RECOMMENDED: {_optimalDeckResult.optimalDeckSize} cards (average of range)\n\n" +
+                            $"Win Rate: {optimalResult.winRate:P2} ({optimalResult.wins}/{optimalResult.totalGames} games)\n" +
+                            $"Close Win Rate: {optimalResult.closeWinRate:P2} (target: ≥{_targetCloseWinRate:P0})\n" +
+                            $"Meets Target: {(optimalResult.meetsTarget ? "YES ✅" : "NO - Consider adjusting settings")}\n" +
+                            $"Avg Moves on Win: {optimalResult.avgMovesOnWin:F1}\n" +
+                            $"Avg Cards Remaining: {optimalResult.avgCardsRemainingOnWin:F2}",
+                            msgType);
+                    }
 
-                EditorGUILayout.Space(10);
+                    EditorGUILayout.Space(10);
+                }
 
                 // Results table
                 EditorGUILayout.LabelField("Detailed Results:", EditorStyles.boldLabel);
@@ -160,15 +165,27 @@ namespace TripeaksSolitaire.Editor
                 // Table rows
                 foreach (var result in _results)
                 {
-                    bool isOptimal = result.deckSize == _optimalDeckSize;
+                    bool isOptimal = false;
+                    bool isInRange = false;
+                    
+                    // Only check optimal/range if simulation is complete
+                    if (_optimalDeckResult != null)
+                    {
+                        isOptimal = result.deckSize == _optimalDeckResult.optimalDeckSize;
+                        isInRange = _optimalDeckResult.qualifyingDeckSizes.Contains(result.deckSize);
+                    }
 
                     if (isOptimal)
                     {
-                        GUI.backgroundColor = Color.green;
+                        GUI.backgroundColor = new Color(0.0f, 1.0f, 0.85f); // Bright green for optimal
+                    }
+                    else if (isInRange)
+                    {
+                        GUI.backgroundColor = new Color(0.6f, 0.9f, 0.6f); // Light green for range
                     }
                     else if (result.meetsTarget)
                     {
-                        GUI.backgroundColor = new Color(0.8f, 1f, 0.8f);
+                        GUI.backgroundColor = new Color(0.8f, 1f, 0.8f); // Very light green
                     }
 
                     EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
@@ -256,20 +273,28 @@ namespace TripeaksSolitaire.Editor
             }
 
             // Find optimal using DifficultyTuner logic
-            _optimalDeckSize = tuner.FindOptimalDeckSize(_results, _targetCloseWinRate);
+            _currentStatus = "Calculating optimal deck size...";
+            _simulationProgress = 0.95f; // Show near completion
+            Repaint();
+            
+            _optimalDeckResult = tuner.FindOptimalDeckSize(_results, _targetCloseWinRate);
 
+            // Update to 100% BEFORE showing popup
             _currentStatus = "Complete!";
             _simulationProgress = 1f;
             _isSimulating = false;
-
             Repaint();
-
-            var optimal = _results.Find(r => r.deckSize == _optimalDeckSize);
             
+            // Give UI time to update to 100%
+            await System.Threading.Tasks.Task.Delay(200);
+
+            // NOW show the popup
+            var optimal = _optimalDeckResult.optimalResult;
+
             string title = optimal.meetsTarget ? "✅ Simulation Complete!" : "⚠️ Simulation Complete";
             string icon = optimal.meetsTarget ? "✅" : "⚠️";
-            
-            string message = $"{icon} Recommended Deck Size: {_optimalDeckSize} cards\n\n";
+
+            string message = $"{icon} Recommended Deck Size: {_optimalDeckResult.optimalDeckSize} cards\n\n";
             message += $"Win Rate: {optimal.winRate:P1}\n";
             message += $"Close Win Rate: {optimal.closeWinRate:P1}\n";
             

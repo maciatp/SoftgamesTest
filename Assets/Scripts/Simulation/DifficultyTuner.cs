@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System;
 using UnityEngine;
 using TripeaksSolitaire.Core;
 
@@ -7,6 +8,15 @@ namespace TripeaksSolitaire.Simulation
 {
     public class DifficultyTuner
     {
+        public class OptimalDeckResult
+        {
+            public int optimalDeckSize;      // Average of the range
+            public int minDeckSize;          // Minimum of range
+            public int maxDeckSize;          // Maximum of range
+            public List<int> qualifyingDeckSizes; // All deck sizes in range
+            public TuningResult optimalResult;    // Result for the optimal (average) deck size
+        }
+
         public class TuningResult
         {
             public int deckSize;
@@ -30,7 +40,7 @@ namespace TripeaksSolitaire.Simulation
             Debug.Log($"Simulations per size: {simulationsPerSize}");
             Debug.Log($"Favorable Probability: {favorableProbability:P1}");
             Debug.Log($"TARGET: {targetCloseWinRate:P0} of wins must have ≤2 cards remaining");
-            Debug.Log($"GOAL: Find SMALLEST deck size that meets this target\n");
+            Debug.Log($"GOAL: Find deck size with HIGHEST avg cards remaining that meets target\n");
             
             for (int deckSize = minDeckSize; deckSize <= maxDeckSize; deckSize++)
             {
@@ -90,73 +100,91 @@ namespace TripeaksSolitaire.Simulation
             };
         }
         
-        public int FindOptimalDeckSize(List<TuningResult> results, float targetCloseWinRate)
+        public OptimalDeckResult FindOptimalDeckSize(List<TuningResult> results, float targetCloseWinRate)
         {
             Debug.Log($"\n=== FINDING OPTIMAL DECK SIZE ===");
             Debug.Log($"Requirement 1: Close Win Rate ≥ {targetCloseWinRate:P0}");
-            Debug.Log($"Requirement 2: If multiple qualify, choose SMALLEST deck size");
+            Debug.Log($"Requirement 2: Find RANGE of qualifying deck sizes");
+            Debug.Log($"Requirement 3: Select AVERAGE of range as optimal");
             Debug.Log($"Definition: Close Win = winning with ≤2 cards left in draw pile\n");
             
             // Find all deck sizes that meet the close win rate target
             var qualifyingResults = results
                 .Where(r => r.meetsTarget)
-                .OrderBy(r => r.deckSize) // Sort by deck size (ascending)
+                .OrderBy(r => r.deckSize)
                 .ToList();
             
             if (qualifyingResults.Count == 0)
             {
                 Debug.LogWarning("⚠️ WARNING: No deck size achieved the target!");
                 Debug.LogWarning($"No deck size had ≥{targetCloseWinRate:P0} close win rate.");
-                Debug.LogWarning("Possible solutions:");
-                Debug.LogWarning("  1. Increase maxDeckSize parameter");
-                Debug.LogWarning("  2. Run more simulations per size");
-                Debug.LogWarning("  3. Adjust level design (reduce difficulty)");
-                Debug.LogWarning("\nFalling back to best available option...\n");
+                Debug.LogWarning("Falling back to best available option...\n");
                 
-                // Fallback: Choose the deck size with highest close win rate
+                // Fallback: Use single best result
                 var fallback = results
-                    .Where(r => r.wins >= 5) // Must have at least 5 wins
-                    .OrderByDescending(r => r.closeWinRate) // Highest close win rate
-                    .ThenBy(r => r.deckSize) // If tied, prefer smaller
+                    .Where(r => r.wins >= 5)
+                    .OrderByDescending(r => r.closeWinRate)
                     .FirstOrDefault();
                 
                 if (fallback != null)
                 {
-                    Debug.LogWarning($"📊 FALLBACK SELECTION:");
-                    Debug.LogWarning($"   Deck Size: {fallback.deckSize}");
-                    Debug.LogWarning($"   Win Rate: {fallback.winRate:P1} ({fallback.wins}/{fallback.totalGames})");
-                    Debug.LogWarning($"   Close Win Rate: {fallback.closeWinRate:P1} ({fallback.closeWins}/{fallback.wins})");
-                    Debug.LogWarning($"   ⚠️ Below {targetCloseWinRate:P0} target\n");
-                    return fallback.deckSize;
+                    Debug.LogWarning($"📊 FALLBACK SELECTION: Deck Size {fallback.deckSize}");
+                    return new OptimalDeckResult
+                    {
+                        optimalDeckSize = fallback.deckSize,
+                        minDeckSize = fallback.deckSize,
+                        maxDeckSize = fallback.deckSize,
+                        qualifyingDeckSizes = new List<int> { fallback.deckSize },
+                        optimalResult = fallback
+                    };
                 }
                 
                 Debug.LogError("❌ ERROR: No viable deck size found!");
-                return results.OrderBy(r => r.deckSize).First().deckSize;
-            }
-            
-            // Success! Select the SMALLEST qualifying deck size
-            var optimal = qualifyingResults.First();
-            
-            Debug.Log($"✅ SUCCESS: Optimal deck size found!");
-            Debug.Log($"\n📊 RECOMMENDED DECK SIZE: {optimal.deckSize}");
-            Debug.Log($"   Win Rate: {optimal.winRate:P1} ({optimal.wins}/{optimal.totalGames} games)");
-            Debug.Log($"   Close Win Rate: {optimal.closeWinRate:P1} ({optimal.closeWins}/{optimal.wins} wins) ✅");
-            Debug.Log($"   Avg Cards Remaining: {optimal.avgCardsRemainingOnWin:F2}");
-            Debug.Log($"   Avg Moves per Win: {optimal.avgMovesOnWin:F1}");
-            
-            // Show alternatives
-            if (qualifyingResults.Count > 1)
-            {
-                Debug.Log($"\n   Alternative deck sizes (also meet target):");
-                foreach (var alt in qualifyingResults.Skip(1).Take(4))
+                var first = results.First();
+                return new OptimalDeckResult
                 {
-                    Debug.Log($"      • Deck {alt.deckSize}: Win {alt.winRate:P1}, Close Win {alt.closeWinRate:P1}");
-                }
-                Debug.Log($"   (Smaller deck = harder but achieves target)");
+                    optimalDeckSize = first.deckSize,
+                    minDeckSize = first.deckSize,
+                    maxDeckSize = first.deckSize,
+                    qualifyingDeckSizes = new List<int> { first.deckSize },
+                    optimalResult = first
+                };
             }
             
-            Debug.Log($"\n=== TUNING COMPLETE ===\n");
-            return optimal.deckSize;
+            // Extract qualifying deck sizes
+            var qualifyingSizes = qualifyingResults.Select(r => r.deckSize).ToList();
+            int minSize = qualifyingSizes.Min();
+            int maxSize = qualifyingSizes.Max();
+            int avgSize = (int)Math.Round(qualifyingSizes.Average());
+            
+            // Get the result for the average deck size (or closest)
+            var optimalResult = qualifyingResults
+                .OrderBy(r => Math.Abs(r.deckSize - avgSize))
+                .First();
+            
+            Debug.Log($"✅ SUCCESS: Optimal deck range found!");
+            Debug.Log($"\n📊 QUALIFYING RANGE: {minSize} to {maxSize} cards ({qualifyingResults.Count} deck sizes)");
+            Debug.Log($"   Deck sizes: {string.Join(", ", qualifyingSizes)}");
+            Debug.Log($"\n🎯 RECOMMENDED DECK SIZE: {optimalResult.deckSize} (average of range)");
+            Debug.Log($"   Win Rate: {optimalResult.winRate:P1} ({optimalResult.wins}/{optimalResult.totalGames} games)");
+            Debug.Log($"   Close Win Rate: {optimalResult.closeWinRate:P1} ({optimalResult.closeWins}/{optimalResult.wins} wins) ✅");
+            Debug.Log($"   Avg Cards Remaining: {optimalResult.avgCardsRemainingOnWin:F2}");
+            Debug.Log($"   Avg Moves per Win: {optimalResult.avgMovesOnWin:F1}");
+            
+            // Show range statistics
+            Debug.Log($"\n📈 RANGE STATISTICS:");
+            Debug.Log($"   Min Deck: {minSize} - Win Rate: {qualifyingResults.First().winRate:P1}");
+            Debug.Log($"   Max Deck: {maxSize} - Win Rate: {qualifyingResults.Last().winRate:P1}");
+            Debug.Log($"   Range Size: {maxSize - minSize} cards");
+            
+            return new OptimalDeckResult
+            {
+                optimalDeckSize = optimalResult.deckSize,
+                minDeckSize = minSize,
+                maxDeckSize = maxSize,
+                qualifyingDeckSizes = qualifyingSizes,
+                optimalResult = optimalResult
+            };
         }
     }
 }
