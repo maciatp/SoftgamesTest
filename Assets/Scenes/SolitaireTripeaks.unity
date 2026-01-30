@@ -1024,6 +1024,11 @@ MonoBehaviour:
   gameOver: 0
   isWin: 0
   favorableProbability: 0.51
+  finalFavorableProbability: 0.25
+  minimumCardsToIncreaseProbability: 5
+  bombFavorableProbability: 0.33
+  bombTimerToIncreaseProbability: 4
+  currentEffectiveProbability: 0.51
   undoButton: {fileID: 529571198}
   undoCountText: {fileID: 0}
   maxUndoSteps: 999
