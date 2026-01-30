@@ -28,6 +28,7 @@
 
 8. Click START SIMULATION
 9. Review results and export to CSV if needed. Import as TSV!!!Required for decimals correct visualization.
+10. A copy of the level can be saved with the optimal deck resulting from the simulation. Click on “Create Optimized Level JSON”, and choose a location to save it.
 
 
 
