@@ -1,7 +1,7 @@
 # **Setup**
 
 1. Open the project in Unity
-2. Open the scene: Assets/Scenes/GameScene.unity
+2. Open the scene: Assets/Scenes/SolitaireTripeaks.unity
 3. In GameManager Inspector, assign a level JSON file from Resources/Levels/
 4. Configure probability settings in Inspector if desired
 5. Press Play to start the game
