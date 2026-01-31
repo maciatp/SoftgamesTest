@@ -10,5 +10,6 @@ INSTRUCTIONS TO SET UP THE PROJECT.
 9. To manually install the proper version of Unity, go to "INSTALLS" in Unity Hub, and then click on "INSTALL EDITOR", and select Unity version 6000.3.5f2 (LTS).
 10. Now you should be able to open the project.
 11. Open the SolitaireTripeaks scene, in "Scenes".
-12. Press the PLAY button to run the game.
+12. Select the GameManager gameobject, and in the Inspector, assign a level JSON file from Resources/Levels/
+13. Press the PLAY button to run the game.
 
