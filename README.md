@@ -13,3 +13,17 @@ INSTRUCTIONS TO SET UP THE PROJECT.
 12. Select the GameManager gameobject, and in the Inspector, assign a level JSON file from Resources/Levels/
 13. Press the PLAY button to run the game.
 
+
+USING THE BALANCING TOOL
+1. Open the tool: Tools → Tripeaks → Difficulty Tuner.
+2. Select a level JSON file.
+3. Configure simulation parameters:
+  a. Min/Max Deck Size: Range to test.
+  b. Simulations Per Size: Number of games per deck size (500-5000).
+  c. Target Close Win %: Desired percentage of wins that are "close" (≤2 cards).
+  d. Probability Settings: Match your game settings.
+4. Click START SIMULATION
+5. Review results and export to CSV if needed. Import as TSV!!!Required for decimals correct visualization.
+6. A copy of the level can be saved with the optimal deck resulting from the simulation. Click on “Create Optimized Level JSON”, and choose a location to save it.
+
+Created by Macià Torrens for SOFTGAMES - TECHNICAL GAME DESIGNER TEST 2026
